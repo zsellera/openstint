@@ -16,7 +16,10 @@
 #include <algorithm>
 #include <numeric>
 #include <functional>
+#include <algorithm>
 #include <vector>
+
+#include "complex_cast.hpp"
 
 #include <zmq.hpp>
 #include <zmq_addon.hpp>
@@ -24,10 +27,10 @@
 #include <libhackrf/hackrf.h>
 #include <liquid/liquid.h>
 
-#include "framesync.hpp"
+#include "preamble.hpp"
+#include "transponder.hpp"
+#include "frame.hpp"
 #include "passing.hpp"
-
-#define MIN_FRAME_LEN 8*4
 
 
 static hackrf_device* device = nullptr;
@@ -37,12 +40,10 @@ static const uint64_t CENTER_FREQ_HZ       = 5000000ULL;
 static const uint32_t SAMPLE_RATE          = 5000000;
 static const uint32_t SYMBOL_RATE          = 1250000;
 static const uint32_t BB_FILTER_BW         = 1750000;
-static const uint32_t SYMBOLS_PER_SAMPLE   = SAMPLE_RATE / SYMBOL_RATE;
+static const uint32_t SAMPLES_PER_SYMBOL   = SAMPLE_RATE / SYMBOL_RATE;
 static const uint8_t DEFAULT_LNA_GAIN      = 32;           // 0-40 in steps of 8 or so; experiment
 static const uint8_t DEFAULT_VGA_GAIN      = 24;           // 0-62
 
-static FrameParser frame_parser(2.0f, 12, 8);
-static modemcf dpsk_modem = modemcf_create(LIQUID_MODEM_DPSK2);
 static PassingDetector passing_detector;
 
 // signal handler to break the capture loop
@@ -51,72 +52,6 @@ void signal_handler(int signum) {
     do_exit = true;
 }
 
-/**
- * BPSK symbols should be 180 degrees apart from each other.
- * The expression "z*z" means "rotate and scale z by z".
- * This transform should bring the z^2 to the same spot: (180+phi)*2 == phi*2.
- * By averaging, we can get a good estimate on symbol phase.
- */
-float bpsk_avg_phase(const Frame *frame, int skip_head, int n) {
-    int beg_idx = (skip_head < frame->len) ? skip_head : frame->len;
-    int end_idx = ((skip_head + n) < frame->len) ? (skip_head + n) : frame->len;
-    
-    // guard clause if *frame is too short:
-    if ((end_idx - beg_idx) <= 0) {
-        return 0.0f;
-    }
-
-    std::complex<float> z2_sum = std::transform_reduce(
-        frame->data + beg_idx, frame->data + end_idx,
-        std::complex<float> {0.0f, 0.0f},
-        std::plus<>(),
-        [](const std::complex<float> &z) {
-            return z * z;
-        }
-    );
-
-    return std::arg(z2_sum) / 2.0f;
-}
-
-/**
- * BPSK demodulator based on sign(z.real)
- * Before decision, it rotates each symbol back to the real axis by -phase
- */
-void bpsk_demod(Frame *frame, std::vector<uint8_t> *datastream) {
-    // reset output
-    datastream->clear();
-
-    // do not decode very short frames (differential encodig would make no sense):
-    if (frame->len < MIN_FRAME_LEN) {
-        return;
-    }
-    
-    // initialize DPSK, add first symbol (will be dropped)
-    unsigned int symbol;
-    modem_reset(dpsk_modem);
-    modemcf_demodulate(dpsk_modem, frame->data[0], &symbol);
-    // demodulate actual bytestream:
-    uint8_t current_byte = 0;
-    for (int i=1; i<frame->len; i++) {
-        modemcf_demodulate(dpsk_modem, frame->data[i], &symbol); // this should track phase shifting
-        current_byte = (current_byte << 1) | static_cast<uint8_t>(symbol);
-
-        if (i % 8 == 0) {
-            datastream->push_back(current_byte);
-            current_byte = 0;
-        }
-    }
-    // last byte:
-    int remainder = frame->len % 8;
-    datastream->push_back(current_byte << (8-remainder));
-
-    // for (auto i = datastream->cbegin(); i != datastream->cend(); ++i) {
-    //     std::cout << std::uppercase << std::hex << std::setw(2) << std::setfill('0') << static_cast<int>(*i) << " ";
-    // }
-    // std::cout << std::dec << std::endl;
-
-    return;
-}
 
 int preamble_position(const std::vector<uint8_t> bytestream, uint32_t preamble, int preamble_size) {
     if (bytestream.size() < 4) {
@@ -197,6 +132,15 @@ uint32_t transponder_decode(const std::vector<uint8_t> bytestream) {
     return 0;
 }
 
+static enum FrameParseMode { FRAME_SEEK, FRAME_FOUND } frame_parse_mode = FRAME_SEEK;
+static FrameDetector frame_detector(0.64f);
+static SymbolReader symbol_reader;
+static Frame frame;
+
+void process_frame(Frame* frame) {
+    std::cout << "frame " << frame->timestamp << " " << static_cast<int>(frame->transponder_type) << " " << frame->rssi << " " << frame->snr << std::endl;
+}
+
 // hackrf callback invoked for each block of data
 extern "C" int rx_callback(hackrf_transfer* transfer) {
     if (do_exit) {
@@ -204,40 +148,35 @@ extern "C" int rx_callback(hackrf_transfer* transfer) {
     }
 
     uint64_t buffer_timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(
-        std::chrono::system_clock::now().time_since_epoch()
+        std::chrono::steady_clock::now().time_since_epoch()
     ).count();
 
-    std::size_t sample_count = transfer->valid_length / 2;
-    const std::complex<int8_t> *iq_samples = reinterpret_cast<const std::complex<int8_t>*>(transfer->buffer);
+    int sample_count = transfer->valid_length / 2;
+    const std::complex<int8_t> *samples = reinterpret_cast<const std::complex<int8_t>*>(transfer->buffer);
     
-    // allocate buffer for received bytestream
-    std::vector<uint8_t> demodulated_bytestream;
-    demodulated_bytestream.reserve(64);
-
-    // identify frames
-    int start_idx = 0;
-    while (std::unique_ptr<Frame> frame = frame_parser.next_frame(iq_samples, sample_count, start_idx)) {
-        float rssi = frame->rssi();
-        uint64_t timestamp = buffer_timestamp + (1000 * start_idx) / SAMPLE_RATE; // END of the frame
-        // collect frame statistics:
-        // TODO frame_statistics.report(timestamp, frame->len, rssi);
-        
-        // makes no sense to allocate further cpu for short messages
-        if (frame->len < MIN_FRAME_LEN) {
-            continue;
-        }
-
-        // demodulate the BPSK signal:
-        bpsk_demod(frame.get(), &demodulated_bytestream);
-        uint32_t transponder_id = transponder_decode(demodulated_bytestream);
-        if (transponder_id != 0) { // we have a transponder!!!
-            passing_detector.append(transponder_id, timestamp, rssi);
+    for (int idx=0; (idx+SAMPLES_PER_SYMBOL)<=sample_count; idx+=SAMPLES_PER_SYMBOL) {
+        if (frame_parse_mode == FRAME_SEEK) {
+            const std::optional<TransponderType> detected = frame_detector.process_baseband(samples+idx);
+            if (detected) {
+                frame_parse_mode = FRAME_FOUND;
+                uint64_t timestamp = buffer_timestamp + (1000 * idx) / SAMPLE_RATE;
+                frame = Frame(detected.value(), timestamp, frame_detector.symbol_energy2(), frame_detector.noise_energy2());
+                symbol_reader.read_preamble(&frame, frame_detector.dc_offset(), samples, idx+4);
+            }
+        } else if (frame_parse_mode == FRAME_FOUND) {
+            symbol_reader.read_symbol(&frame, frame_detector.dc_offset(), samples+idx);
+            if (symbol_reader.is_frame_complete(&frame)) {
+                frame_parse_mode = FRAME_SEEK;
+                process_frame(&frame);
+            }
         }
     }
+    frame_detector.update_statistics();
+    symbol_reader.update_reserve_buffer(samples, sample_count);
 
     // Returning 0 indicates "keep going".
     return 0;
-}
+}    
 
 int main(int argc, char** argv) {
     int result = HACKRF_SUCCESS;
@@ -325,7 +264,7 @@ int main(int argc, char** argv) {
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
         
         const auto now = std::chrono::duration_cast<std::chrono::milliseconds>(
-            std::chrono::system_clock::now().time_since_epoch()
+            std::chrono::steady_clock::now().time_since_epoch()
         ).count();
         std::vector<Passing> passings = passing_detector.identify_passings(now - 250ul);
         for (const auto& passing : passings) {

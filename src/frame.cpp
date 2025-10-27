@@ -1,0 +1,211 @@
+#include "frame.hpp"
+#include "transponder.hpp"
+
+#include <bit>
+#include "complex_cast.hpp"
+
+#define FRAME_MAX_SYMBOL_SPACE 128
+
+
+Frame::Frame() {
+    preamble_size = payload_size = 0;
+    softbits.reserve(FRAME_MAX_SYMBOL_SPACE);
+    timestamp = 0;
+    rssi = snr = 0;
+}
+
+Frame::Frame(TransponderType _ttype, uint64_t _ts, int symbol_e2, int noise_e2) 
+    : transponder_type(_ttype), timestamp(_ts) {
+    softbits.reserve(FRAME_MAX_SYMBOL_SPACE);
+    payload_size = transponder_props(transponder_type).payload_size;
+    preamble_size = 16; // TODO
+    rssi = std::log2f(static_cast<float>(symbol_e2)) / 2.0f;
+    snr = rssi - std::log2f(static_cast<float>(noise_e2)) / 2.0f;
+}
+
+uint32_t concat_bits32(uint8_t *soft_bits) {
+    uint32_t v = 0;
+    for (int i=0; i<32; i++) {
+        if (soft_bits[i] & 0x80) {
+            v |= 1u;
+        }
+        v <<= 1;
+    }
+    return v;
+}
+
+int preamble_pos(uint32_t sof, uint16_t preamble) {
+    const int preamble_size = 16;
+    const int max_bit_errors = 1;
+    const uint32_t mask = (1 << preamble_size) - 1;
+
+    uint32_t pp = static_cast<uint32_t>(preamble);
+    for (int i=0; i<=(32-preamble_size); i++) {
+        uint32_t result = (sof & mask) ^ pp;
+        if (std::popcount(result) <= max_bit_errors) {
+            return 32 - preamble_size - i;
+        } else {
+            sof >>= 1;
+        }
+    }
+    return -1;
+}
+
+const uint8_t* Frame::bits() {
+    if (softbits.size() < 32) {
+        return nullptr;
+    }
+
+    // start-of-frame 32 bits contain the preamble
+    uint32_t sof = concat_bits32(softbits.data());
+    int pos = preamble_pos(sof, transponder_props(transponder_type).preamble);
+    if (pos < 0) { // preamble was not found (ie. corrupted)
+        return nullptr;
+    }
+    if (softbits.size() < pos + payload_size) {
+        // could not read enough bits (this should be an exception btw...)
+        return nullptr;
+    }
+
+    return softbits.data() + pos;
+}
+
+FrameDetector::FrameDetector(float _threshold) : threshold(_threshold) {};
+
+std::optional<TransponderType> FrameDetector::process_baseband(const std::complex<int8_t> *samples) {
+    // we should run 4 circular buffers in parallel, but this seems good enough
+    uint16_t mag2s[4];
+    mag2s[0] = std::norm(complex_cast<int16_t>(samples[0]-offset));
+    mag2s[1] = std::norm(complex_cast<int16_t>(samples[1]-offset));
+    mag2s[2] = std::norm(complex_cast<int16_t>(samples[2]-offset));
+    mag2s[3] = std::norm(complex_cast<int16_t>(samples[3]-offset));
+    int idx = std::distance(mag2s, std::max_element(mag2s, mag2s+4)); // ~maxarg
+
+    // select representative elements, add to buffer
+    std::complex<int8_t> ss1 = samples[idx]-offset;
+    uint32_t ss2 = mag2s[idx];
+    buffer.push(ss1, ss2);
+
+    // update statistics
+    s1 += ss1;
+    s2 += ss2;
+    ++n;
+
+    // run matchers
+    if (buffer.match_preamble(p_openstint) > threshold) {
+        return TransponderType::OpenStint;
+    }
+    if (buffer.match_preamble(p_legacy) > threshold) {
+        return TransponderType::Legacy;
+    }
+    return std::nullopt;
+}
+
+void FrameDetector::update_statistics() {
+    if (n > 100000) {
+        offset = complex_cast<int8_t>(s1 / n);
+        variance2 = s2 / (n - 1); // sample's variance
+        // reset counters:
+        s1 = std::complex<int32_t>(0, 0);
+        s2 = 0;
+        n = 0;
+    }
+}
+
+const uint32_t FrameDetector::symbol_energy2() {
+    return buffer.window_energy / 16;
+}
+
+const uint32_t FrameDetector::noise_energy2() {
+    return variance2;
+}
+
+const std::complex<int8_t> FrameDetector::dc_offset() {
+    return offset;
+}
+
+SymbolReader::SymbolReader() {
+    symsync = symsync_crcf_create_rnyquist(
+        LIQUID_FIRFILT_RRC,
+        samples_per_symbol,
+        filter_delay, // filter length (delay!)
+        0.3f, // filter excess bandwidth
+        8 // number of polyphase filters in bank
+    );
+    dpsk_modem = modemcf_create(LIQUID_MODEM_DPSK2);
+}
+
+SymbolReader::~SymbolReader() {
+    symsync_crcf_destroy(symsync);
+    modemcf_destroy(dpsk_modem);
+}
+
+uint32_t SymbolReader::read_single(Frame *dst, const std::complex<int8_t> offset, const std::complex<int8_t> *src) {
+    // convert i8 to f32
+    std::complex<float> bf[samples_per_symbol];
+    for (int j=0; j<samples_per_symbol; ++j) {
+        bf[j] = complex_cast<float>(src[j]-offset);
+    }
+    // symbol sync
+    std::complex<float> symbols[samples_per_symbol];
+    uint32_t symbols_written;
+    symsync_crcf_execute(
+        symsync, 
+        bf, 
+        samples_per_symbol,
+        symbols,
+        &symbols_written
+    );
+    // dpsk-demod
+    for (int i=0; i<symbols_written; ++i) {
+        unsigned int bit; // bit-level decoding
+        uint8_t soft_bit; // how likely the symbol is
+        modem_demodulate_soft(dpsk_modem, symbols[i], &bit, &soft_bit);
+        if (dst) {
+            dst->softbits.push_back(soft_bit);
+        }
+    }
+
+    return symbols_written;
+}
+
+void SymbolReader::read_preamble0(Frame *dst, std::complex<int8_t> offset, const std::complex<int8_t> *src, int end) {
+    int start = end - (samples_per_symbol * preamble_length);
+    if (start < 0) {
+        // the actual buffer does not contain all data, must read from
+        // the previous buffer as well
+        start += (MAX_PREAMBLE * samples_per_symbol); // reserve buffer's size
+        for (int i=start; i<MAX_PREAMBLE * samples_per_symbol; i+=4) {
+            read_single(dst, offset, reserve_buffer+i);
+        }
+        start = 0;
+    }
+    for (int i=start; i<end; i+=4) {
+        read_single(dst, offset, src+i);
+    }
+}
+
+void SymbolReader::read_preamble(Frame *dst, std::complex<int8_t> offset, const std::complex<int8_t> *src, int end) {
+    symsync_crcf_reset(symsync);
+    modem_reset(dpsk_modem);
+
+    // New burst received, the symbol sync block has to lock on
+    // Read the preamble, but do not save it, as it likely contain
+    // some junk. The preambles are designed for quick symsync lock.
+    read_preamble0(nullptr, offset, src, end);
+    // re-read preamble for real now
+    read_preamble0(dst, offset, src, end);
+}
+
+void SymbolReader::update_reserve_buffer(const std::complex<int8_t> *src, int end) {
+    const int n_preserved = MAX_PREAMBLE * samples_per_symbol;
+    memcpy(reserve_buffer, src + end - n_preserved, n_preserved * sizeof(std::complex<uint8_t>));
+}
+
+void SymbolReader::read_symbol(Frame *dst, std::complex<int8_t> offset, const std::complex<int8_t> *src) {
+    read_single(dst, offset, src);
+}
+
+bool SymbolReader::is_frame_complete(const Frame *f) {
+    return f->softbits.size() >= (f->preamble_size + f->payload_size + filter_delay);
+}
