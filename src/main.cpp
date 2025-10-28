@@ -138,7 +138,7 @@ static SymbolReader symbol_reader;
 static Frame frame;
 
 void process_frame(Frame* frame) {
-    std::cout << "frame " << frame->timestamp << " " << static_cast<int>(frame->transponder_type) << " " << frame->rssi << " " << frame->snr << std::endl;
+    std::cout << "frame " << *frame << std::endl;
 }
 
 // hackrf callback invoked for each block of data
@@ -154,11 +154,13 @@ extern "C" int rx_callback(hackrf_transfer* transfer) {
     int sample_count = transfer->valid_length / 2;
     const std::complex<int8_t> *samples = reinterpret_cast<const std::complex<int8_t>*>(transfer->buffer);
     
+    bool frame_detected = false;
     for (int idx=0; (idx+SAMPLES_PER_SYMBOL)<=sample_count; idx+=SAMPLES_PER_SYMBOL) {
         if (frame_parse_mode == FRAME_SEEK) {
             const std::optional<TransponderType> detected = frame_detector.process_baseband(samples+idx);
             if (detected) {
                 frame_parse_mode = FRAME_FOUND;
+                frame_detected = true;
                 uint64_t timestamp = buffer_timestamp + (1000 * idx) / SAMPLE_RATE;
                 frame = Frame(detected.value(), timestamp, frame_detector.symbol_energy2(), frame_detector.noise_energy2());
                 symbol_reader.read_preamble(&frame, frame_detector.dc_offset(), samples, idx+4);
@@ -171,8 +173,21 @@ extern "C" int rx_callback(hackrf_transfer* transfer) {
             }
         }
     }
-    frame_detector.update_statistics();
+
+    // save a small section of the buffer
+    // if there is a frame in the next buffer, and read_preamble() must
+    // look back, here save the trailing section of the current buffer
     symbol_reader.update_reserve_buffer(samples, sample_count);
+
+    // update counters for noise energy and dc offset
+    if (frame_detected) {
+        // there was an actice frame in the buffer, do not update
+        // statistics, as the received data messes with the
+        // noise/dc-offset calculation
+        frame_detector.reset_statistics_counters();
+    } else {
+        frame_detector.update_statistics();
+    }
 
     // Returning 0 indicates "keep going".
     return 0;

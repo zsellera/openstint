@@ -2,9 +2,12 @@
 #include "transponder.hpp"
 
 #include <bit>
+#include <string>
+
 #include "complex_cast.hpp"
 
 #define FRAME_MAX_SYMBOL_SPACE 128
+#define STATS_UPDATE_THRESHOLD (1<<15)
 
 
 Frame::Frame() {
@@ -34,12 +37,13 @@ uint32_t concat_bits32(uint8_t *soft_bits) {
     return v;
 }
 
-int preamble_pos(uint32_t sof, uint16_t preamble) {
+int preamble_pos(uint32_t sof, uint16_t bpsk_preamble) {
+    const uint16_t dpsk_preamble = bpsk_preamble ^ (bpsk_preamble >> 1);
     const int preamble_size = 16;
     const int max_bit_errors = 1;
     const uint32_t mask = (1 << preamble_size) - 1;
 
-    uint32_t pp = static_cast<uint32_t>(preamble);
+    uint32_t pp = static_cast<uint32_t>(dpsk_preamble);
     for (int i=0; i<=(32-preamble_size); i++) {
         uint32_t result = (sof & mask) ^ pp;
         if (std::popcount(result) <= max_bit_errors) {
@@ -70,6 +74,12 @@ const uint8_t* Frame::bits() {
     return softbits.data() + pos;
 }
 
+std::ostream& operator <<(std::ostream& os, const Frame& f) {
+    std::stringstream s;
+    copy(f.softbits.begin(), f.softbits.end(), std::ostream_iterator<int>(s, ", "));
+    return os << transponder_props(f.transponder_type).prefix << " RSSI:" << f.rssi << " SNR:" << f.snr << " [" << s.str() << "]\n";
+}
+
 FrameDetector::FrameDetector(float _threshold) : threshold(_threshold) {};
 
 std::optional<TransponderType> FrameDetector::process_baseband(const std::complex<int8_t> *samples) {
@@ -86,10 +96,10 @@ std::optional<TransponderType> FrameDetector::process_baseband(const std::comple
     uint32_t ss2 = mag2s[idx];
     buffer.push(ss1, ss2);
 
-    // update statistics
-    s1 += ss1;
-    s2 += ss2;
-    ++n;
+    // update statistics (sample first element)
+    s1 += samples[0];
+    s2 += mag2s[0];
+    n++;
 
     // run matchers
     if (buffer.match_preamble(p_openstint) > threshold) {
@@ -102,14 +112,17 @@ std::optional<TransponderType> FrameDetector::process_baseband(const std::comple
 }
 
 void FrameDetector::update_statistics() {
-    if (n > 100000) {
+    if (n > STATS_UPDATE_THRESHOLD) {
         offset = complex_cast<int8_t>(s1 / n);
         variance2 = s2 / (n - 1); // sample's variance
-        // reset counters:
-        s1 = std::complex<int32_t>(0, 0);
-        s2 = 0;
-        n = 0;
+        reset_statistics_counters();
     }
+}
+
+void FrameDetector::reset_statistics_counters() {
+    s1 = std::complex<int32_t>(0, 0);
+    s2 = 0;
+    n = 0;
 }
 
 const uint32_t FrameDetector::symbol_energy2() {
@@ -170,7 +183,10 @@ uint32_t SymbolReader::read_single(Frame *dst, const std::complex<int8_t> offset
 }
 
 void SymbolReader::read_preamble0(Frame *dst, std::complex<int8_t> offset, const std::complex<int8_t> *src, int end) {
-    int start = end - (samples_per_symbol * preamble_length);
+    // as differential-encoded bits are BPSK-modulated, we need the -1th symbol
+    // to correctly decode the first bit => read (preamble_length+1)
+    // note, as min(end) >= 4, MAX_PREAMBLE can indeed be 16 for 16-bit preambles
+    int start = end - (samples_per_symbol * (preamble_length+1));
     if (start < 0) {
         // the actual buffer does not contain all data, must read from
         // the previous buffer as well
@@ -207,5 +223,8 @@ void SymbolReader::read_symbol(Frame *dst, std::complex<int8_t> offset, const st
 }
 
 bool SymbolReader::is_frame_complete(const Frame *f) {
-    return f->softbits.size() >= (f->preamble_size + f->payload_size + filter_delay);
+    // we read the preamble + -1th bit to initialize differential-BPSK demodulation
+    // payload, obviously
+    // the symbol-sync's filters has their own delay
+    return f->softbits.size() >= (f->preamble_size + 1 + f->payload_size + filter_delay);
 }

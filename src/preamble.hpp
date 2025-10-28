@@ -13,7 +13,7 @@ class Preamble {
     int8_t pattern[bit_count][bit_count];
 
 public:
-    Preamble(T preamble) {
+    constexpr Preamble(T preamble) noexcept {
         preamble_word = preamble;
 
         // Fill the 0th row with ±1 according to bits
@@ -88,5 +88,5 @@ public:
         return static_cast<float>(c2) / (window_energy * 16);
     }
 
-    constexpr uint32_t energy() const { return window_energy; }
+    uint32_t energy() const { return window_energy; }
 };
