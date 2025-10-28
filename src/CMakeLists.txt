@@ -6,7 +6,7 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 # Add the main executable
-add_executable(main main.cpp frame.cpp passing.cpp)
+add_executable(main main.cpp frame.cpp transponder.cpp passing.cpp)
 
 find_path(LIQUID_INCLUDE_DIR NAMES liquid/liquid.h)
 find_library(LIQUID_LIB REQUIRED NAMES liquid liquid-dsp)

@@ -11,17 +11,18 @@ enum class TransponderType {
 };
 
 struct TransponderProps {
-    uint16_t preamble;
+    uint16_t bpsk_preamble;
+    uint16_t dpsk_preamble;
     std::size_t payload_size;
     std::string_view prefix;
 };
 
-uint32_t decode_openstint(const uint8_t *softbits, int *err);
-uint32_t decode_legacy3(const uint8_t *softbits, int *err);
+int decode_openstint(const uint8_t *softbits, uint32_t *transponder_id);
+int decode_legacy(const uint8_t *softbits, uint32_t *transponder_id);
 
 inline constexpr TransponderProps TRANSPONDER_PROPERTIES[] = {
-    {0xe255, 80, "OPN"},
-    {0x51e4, 80, "AMB"}
+    {0xe255, 0x937f, 80, "OPN"},
+    {0x51e4, 0x7916, 80, "AMB"}
 };
 
 constexpr TransponderProps transponder_props(TransponderType t) {

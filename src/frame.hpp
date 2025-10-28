@@ -25,7 +25,7 @@ struct Frame {
     float snr;
     
     Frame();
-    Frame(TransponderType transponder_type, uint64_t timestamp, int symbol_e2, int noise_e2);
+    Frame(TransponderType transponder_type, uint64_t timestamp, float symbol_e2, float noise_e2);
 
     const uint8_t* bits();
 };
@@ -36,14 +36,14 @@ class FrameDetector {
     static constexpr int samples_per_symbol = 4;
 
     // preamble matching
-    static inline const Preamble<uint16_t> p_openstint { transponder_props(TransponderType::OpenStint).preamble };
-    static inline const Preamble<uint16_t> p_legacy { transponder_props(TransponderType::Legacy).preamble };
+    static inline const Preamble<uint16_t> p_openstint { transponder_props(TransponderType::OpenStint).bpsk_preamble };
+    static inline const Preamble<uint16_t> p_legacy { transponder_props(TransponderType::Legacy).bpsk_preamble };
     CircBuff<uint16_t> buffer;
     float threshold;
 
     // stream statistics:
     std::complex<int8_t> offset= {0, 0}; // dc offset ~ sample mean
-    uint32_t variance2 = 0; // ~noise power
+    float variance2 = 0; // ~noise power
     
     // statistic calculation:
     std::complex<int32_t> s1 = {0, 0}; // sum of samples
@@ -56,14 +56,14 @@ public:
     void update_statistics();
     void reset_statistics_counters();
 
-    const uint32_t symbol_energy2();
-    const uint32_t noise_energy2();
+    const float symbol_energy2();
+    const float noise_energy2();
     const std::complex<int8_t> dc_offset();
 };
 
 class SymbolReader {
     static constexpr int samples_per_symbol = 4;
-    static constexpr int filter_delay = 5;
+    static constexpr int filter_delay = 3;
     static constexpr int preamble_length = 16;
 
     symsync_crcf symsync;
