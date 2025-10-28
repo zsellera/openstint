@@ -16,6 +16,9 @@ struct TransponderProps {
     std::string_view prefix;
 };
 
+uint32_t decode_openstint(const uint8_t *softbits, int *err);
+uint32_t decode_legacy3(const uint8_t *softbits, int *err);
+
 inline constexpr TransponderProps TRANSPONDER_PROPERTIES[] = {
     {0xe255, 80, "OPN"},
     {0x51e4, 80, "AMB"}

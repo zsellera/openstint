@@ -4,6 +4,7 @@
 #include <cstdbool>
 #include <complex>
 #include <optional>
+#include <ostream>
 
 #include "transponder.hpp"
 #include "preamble.hpp"
@@ -29,6 +30,8 @@ struct Frame {
     const uint8_t* bits();
 };
 
+std::ostream& operator <<(std::ostream& os, const Frame& f);
+
 class FrameDetector {
     static constexpr int samples_per_symbol = 4;
 
@@ -51,6 +54,7 @@ public:
 
     std::optional<TransponderType> process_baseband(const std::complex<int8_t> *samples);
     void update_statistics();
+    void reset_statistics_counters();
 
     const uint32_t symbol_energy2();
     const uint32_t noise_energy2();
