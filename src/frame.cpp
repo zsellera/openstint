@@ -7,6 +7,7 @@
 #include "complex_cast.hpp"
 
 #define FRAME_MAX_SYMBOL_SPACE 128
+#define PREAMBLE_MAX_BIT_ERRORS 2
 #define STATS_UPDATE_THRESHOLD (1<<15)
 
 
@@ -17,36 +18,35 @@ Frame::Frame() {
     rssi = snr = 0;
 }
 
-Frame::Frame(TransponderType _ttype, uint64_t _ts, int symbol_e2, int noise_e2) 
+Frame::Frame(TransponderType _ttype, uint64_t _ts, float symbol_e2, float noise_e2) 
     : transponder_type(_ttype), timestamp(_ts) {
     softbits.reserve(FRAME_MAX_SYMBOL_SPACE);
     payload_size = transponder_props(transponder_type).payload_size;
     preamble_size = 16; // TODO
-    rssi = std::log2f(static_cast<float>(symbol_e2)) / 2.0f;
-    snr = rssi - std::log2f(static_cast<float>(noise_e2)) / 2.0f;
+    rssi = std::log2f(symbol_e2) / 2.0f;
+    float noise_floor = std::log2f(noise_e2) / 2.0f;
+    snr = rssi - noise_floor; // log(a/b) = log(a)-log(b)
 }
 
 uint32_t concat_bits32(uint8_t *soft_bits) {
     uint32_t v = 0;
     for (int i=0; i<32; i++) {
+        v <<= 1;
         if (soft_bits[i] & 0x80) {
             v |= 1u;
         }
-        v <<= 1;
     }
     return v;
 }
 
-int preamble_pos(uint32_t sof, uint16_t bpsk_preamble) {
-    const uint16_t dpsk_preamble = bpsk_preamble ^ (bpsk_preamble >> 1);
+int preamble_pos(uint32_t sof, uint16_t dpsk_preamble) {
     const int preamble_size = 16;
-    const int max_bit_errors = 1;
     const uint32_t mask = (1 << preamble_size) - 1;
 
     uint32_t pp = static_cast<uint32_t>(dpsk_preamble);
     for (int i=0; i<=(32-preamble_size); i++) {
         uint32_t result = (sof & mask) ^ pp;
-        if (std::popcount(result) <= max_bit_errors) {
+        if (std::popcount(result) <= PREAMBLE_MAX_BIT_ERRORS) {
             return 32 - preamble_size - i;
         } else {
             sof >>= 1;
@@ -62,22 +62,22 @@ const uint8_t* Frame::bits() {
 
     // start-of-frame 32 bits contain the preamble
     uint32_t sof = concat_bits32(softbits.data());
-    int pos = preamble_pos(sof, transponder_props(transponder_type).preamble);
+    int pos = preamble_pos(sof, transponder_props(transponder_type).dpsk_preamble);
     if (pos < 0) { // preamble was not found (ie. corrupted)
         return nullptr;
     }
-    if (softbits.size() < pos + payload_size) {
+    if (softbits.size() < pos + preamble_size + payload_size) {
         // could not read enough bits (this should be an exception btw...)
         return nullptr;
     }
 
-    return softbits.data() + pos;
+    return softbits.data() + pos + preamble_size;
 }
 
 std::ostream& operator <<(std::ostream& os, const Frame& f) {
     std::stringstream s;
     copy(f.softbits.begin(), f.softbits.end(), std::ostream_iterator<int>(s, ", "));
-    return os << transponder_props(f.transponder_type).prefix << " RSSI:" << f.rssi << " SNR:" << f.snr << " [" << s.str() << "]\n";
+    return os << transponder_props(f.transponder_type).prefix << " T:" << f.timestamp << " RSSI:" << f.rssi << " SNR:" << f.snr << " [" << s.str() << "]";
 }
 
 FrameDetector::FrameDetector(float _threshold) : threshold(_threshold) {};
@@ -114,7 +114,7 @@ std::optional<TransponderType> FrameDetector::process_baseband(const std::comple
 void FrameDetector::update_statistics() {
     if (n > STATS_UPDATE_THRESHOLD) {
         offset = complex_cast<int8_t>(s1 / n);
-        variance2 = s2 / (n - 1); // sample's variance
+        variance2 = static_cast<float>(s2) / (n - 1); // sample's variance
         reset_statistics_counters();
     }
 }
@@ -125,11 +125,11 @@ void FrameDetector::reset_statistics_counters() {
     n = 0;
 }
 
-const uint32_t FrameDetector::symbol_energy2() {
-    return buffer.window_energy / 16;
+const float FrameDetector::symbol_energy2() {
+    return static_cast<float>(buffer.window_energy) / 16.0f;
 }
 
-const uint32_t FrameDetector::noise_energy2() {
+const float FrameDetector::noise_energy2() {
     return variance2;
 }
 
@@ -142,7 +142,7 @@ SymbolReader::SymbolReader() {
         LIQUID_FIRFILT_RRC,
         samples_per_symbol,
         filter_delay, // filter length (delay!)
-        0.3f, // filter excess bandwidth
+        0.65f, // filter excess bandwidth
         8 // number of polyphase filters in bank
     );
     dpsk_modem = modemcf_create(LIQUID_MODEM_DPSK2);
@@ -208,6 +208,7 @@ void SymbolReader::read_preamble(Frame *dst, std::complex<int8_t> offset, const 
     // New burst received, the symbol sync block has to lock on
     // Read the preamble, but do not save it, as it likely contain
     // some junk. The preambles are designed for quick symsync lock.
+    read_preamble0(nullptr, offset, src, end);
     read_preamble0(nullptr, offset, src, end);
     // re-read preamble for real now
     read_preamble0(dst, offset, src, end);

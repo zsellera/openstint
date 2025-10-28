@@ -44,6 +44,11 @@ static const uint32_t SAMPLES_PER_SYMBOL   = SAMPLE_RATE / SYMBOL_RATE;
 static const uint8_t DEFAULT_LNA_GAIN      = 32;           // 0-40 in steps of 8 or so; experiment
 static const uint8_t DEFAULT_VGA_GAIN      = 24;           // 0-62
 
+static enum FrameParseMode { FRAME_SEEK, FRAME_FOUND } frame_parse_mode = FRAME_SEEK;
+static FrameDetector frame_detector(0.64f);
+static SymbolReader symbol_reader;
+static Frame frame;
+
 static PassingDetector passing_detector;
 
 // signal handler to break the capture loop
@@ -52,93 +57,27 @@ void signal_handler(int signum) {
     do_exit = true;
 }
 
-
-int preamble_position(const std::vector<uint8_t> bytestream, uint32_t preamble, int preamble_size) {
-    if (bytestream.size() < 4) {
-        return -1;
-    }
-    
-    uint32_t seq = (static_cast<uint32_t>(bytestream[0]) << 24) |
-           (static_cast<uint32_t>(bytestream[1]) << 16) |
-           (static_cast<uint32_t>(bytestream[2]) << 8)  |
-           (static_cast<uint32_t>(bytestream[3]));
-    
-    uint32_t mask = (1u << preamble_size) - 1u;
-
-    for (int i=0; i<=(32-preamble_size); i++) {
-        if ((seq & mask) == preamble) {
-            // std::cout << i << " " << std::uppercase << std::hex << std::setw(8) << std::setfill('0') << seq << std::endl << std::dec;
-            return 32 - preamble_size - i;
-        } else {
-            preamble = preamble << 1;
-            mask = mask << 1;
-        }
-    }
-    return -1; // not found
-}
-
-uint32_t transponder_rc3(const uint8_t payload[]) {
-    std::array<uint8_t, 24> transponder_bits = {};
-
-    for (int i = 0; i < 8; ++i) {
-        transponder_bits[24 - i * 3 - 1] = ((payload[i] & 0x20) >> 5) ^ ((payload[i] & 0x10) >> 4);
-        transponder_bits[24 - i * 3 - 2] = ((payload[i] & 0x08) >> 3) ^ ((payload[i] & 0x04) >> 2);
-        transponder_bits[24 - i * 3 - 3] = ((payload[i] & 0x02) >> 1) ^ ((payload[i] & 0x01) >> 0);
-    }
-
-    uint32_t result = 0;
-    for (int i = 0; i < 24; ++i) {
-        result |= static_cast<uint32_t>(transponder_bits[i]) << (23 - i);
-    }
-
-    if (result > 9999999) {
-        return 0; // status messages are above 7 digits
-    }
-    return result;
-}
-
-uint32_t transponder_decode(const std::vector<uint8_t> bytestream) {
-    // if (bytestream.size() < 10) { // preamble + 8 databytes
-    //     return 0;
-    // }
-
-    int rc3_start = preamble_position(bytestream, 0x7916, 16);
-    if (rc3_start >= 0) {
-        rc3_start += 16;
-        uint8_t buffer[32]; // Frame has 161 symbols max, bytestream max size is 20 
-        memset(buffer, 0, 32);
-
-        // copy aligned data to buffer:
-        int cut_bytes = rc3_start / 8;
-        int shift_bits = rc3_start - 8 * cut_bytes;
-        if (shift_bits == 0) { // shortcut if no further bit-shifting is needed:
-            for (int i=cut_bytes; i<bytestream.size(); i++) {
-                buffer[i-cut_bytes] = bytestream[i];
-            }
-        } else {
-            uint8_t l_mask = (1u << shift_bits) - 1u;
-            uint8_t h_mask = ~l_mask;
-            
-            for (int i=cut_bytes; i<bytestream.size()-1; i++) {
-                uint8_t h = (bytestream[i] << shift_bits) & h_mask;
-                uint8_t l = (bytestream[i+1] >> (8 - shift_bits)) & l_mask;
-                buffer[i-cut_bytes] = h | l;
-            }
-        }
-
-        // rc3 decoding
-        return transponder_rc3(buffer);
-    }
-    return 0;
-}
-
-static enum FrameParseMode { FRAME_SEEK, FRAME_FOUND } frame_parse_mode = FRAME_SEEK;
-static FrameDetector frame_detector(0.64f);
-static SymbolReader symbol_reader;
-static Frame frame;
-
 void process_frame(Frame* frame) {
-    std::cout << "frame " << *frame << std::endl;
+    // std::cout << "frame " << *frame << std::endl;
+    const uint8_t *softbits = frame->bits();
+    if (!softbits) {
+        // preamble not found
+        return;
+    }
+
+    uint32_t transponder_id;
+    switch (frame->transponder_type) {
+        case TransponderType::OpenStint:
+        // TODO
+        break;
+        case TransponderType::Legacy:
+            if (decode_legacy(softbits, &transponder_id)) {
+                if (transponder_id < 10000000) {
+                    passing_detector.append(transponder_id, frame->timestamp, frame->rssi);
+                }
+            }
+        break;
+    }
 }
 
 // hackrf callback invoked for each block of data
