@@ -5,7 +5,7 @@
 
 #include "passing.hpp"
 
-#define REPORT_HIT_LIMIT 3
+#define REPORT_HIT_LIMIT 2
 
 void PassingDetector::append(int32_t transponder_id, 
                              uint64_t timestamp, 

@@ -8,7 +8,7 @@
 
 #define FRAME_MAX_SYMBOL_SPACE 128
 #define PREAMBLE_MAX_BIT_ERRORS 2
-#define STATS_UPDATE_THRESHOLD (1<<15)
+#define STATS_UPDATE_THRESHOLD (1<<12)
 
 
 Frame::Frame() {
@@ -83,18 +83,30 @@ std::ostream& operator <<(std::ostream& os, const Frame& f) {
 FrameDetector::FrameDetector(float _threshold) : threshold(_threshold) {};
 
 std::optional<TransponderType> FrameDetector::process_baseband(const std::complex<int8_t> *samples) {
-    // we should run 4 circular buffers in parallel, but this seems good enough
-    uint16_t mag2s[4];
-    mag2s[0] = std::norm(complex_cast<int16_t>(samples[0]-offset));
-    mag2s[1] = std::norm(complex_cast<int16_t>(samples[1]-offset));
-    mag2s[2] = std::norm(complex_cast<int16_t>(samples[2]-offset));
-    mag2s[3] = std::norm(complex_cast<int16_t>(samples[3]-offset));
-    int idx = std::distance(mag2s, std::max_element(mag2s, mag2s+4)); // ~maxarg
+    // remove dc-offset + calculate magninude^2 of each sample
+    std::complex<int8_t> sb[samples_per_symbol];
+    uint16_t mag2s[samples_per_symbol];
+    std::transform(
+        samples, samples + samples_per_symbol,
+        sb, [this](const std::complex<int8_t> s) { return s - this->offset; }
+    );
+    std::transform(
+        sb, sb + samples_per_symbol,
+        mag2s,
+        [this](const std::complex<int8_t> s) { return std::norm(complex_cast<int16_t>(s)); }
+    );
 
-    // select representative elements, add to buffer
-    std::complex<int8_t> ss1 = samples[idx]-offset;
-    uint32_t ss2 = mag2s[idx];
-    buffer.push(ss1, ss2);
+    // run 4 circular buffers in parallel
+    for (int i=0; i<samples_per_symbol; i++) {
+        buffers[i].push(sb[i], mag2s[i]);
+    }
+
+    // select the best-looking buffer to compute preamble-match
+    uint32_t wes[samples_per_symbol];
+    for (int i=0; i<samples_per_symbol; i++) { 
+        wes[i] = buffers[i].window_energy;
+    }
+    int idx = std::distance(wes, std::max_element(wes, wes+4)); // ~maxarg
 
     // update statistics (sample first element)
     s1 += samples[0];
@@ -102,10 +114,10 @@ std::optional<TransponderType> FrameDetector::process_baseband(const std::comple
     n++;
 
     // run matchers
-    if (buffer.match_preamble(p_openstint) > threshold) {
+    if (buffers[idx].match_preamble(p_openstint) > threshold) {
         return TransponderType::OpenStint;
     }
-    if (buffer.match_preamble(p_legacy) > threshold) {
+    if (buffers[idx].match_preamble(p_legacy) > threshold) {
         return TransponderType::Legacy;
     }
     return std::nullopt;
@@ -126,7 +138,10 @@ void FrameDetector::reset_statistics_counters() {
 }
 
 const float FrameDetector::symbol_energy2() {
-    return static_cast<float>(buffer.window_energy) / 16.0f;
+    uint32_t wes[4] = { buffers[0].window_energy, buffers[1].window_energy, buffers[2].window_energy, buffers[3].window_energy }; 
+    int idx = std::distance(wes, std::max_element(wes, wes+4)); // ~maxarg
+
+    return static_cast<float>(buffers[idx].window_energy) / 16.0f;
 }
 
 const float FrameDetector::noise_energy2() {
@@ -142,7 +157,7 @@ SymbolReader::SymbolReader() {
         LIQUID_FIRFILT_RRC,
         samples_per_symbol,
         filter_delay, // filter length (delay!)
-        0.65f, // filter excess bandwidth
+        0.3f, // filter excess bandwidth
         8 // number of polyphase filters in bank
     );
     dpsk_modem = modemcf_create(LIQUID_MODEM_DPSK2);
@@ -178,7 +193,6 @@ uint32_t SymbolReader::read_single(Frame *dst, const std::complex<int8_t> offset
             dst->softbits.push_back(soft_bit);
         }
     }
-
     return symbols_written;
 }
 
@@ -203,6 +217,7 @@ void SymbolReader::read_preamble0(Frame *dst, std::complex<int8_t> offset, const
 
 void SymbolReader::read_preamble(Frame *dst, std::complex<int8_t> offset, const std::complex<int8_t> *src, int end) {
     symsync_crcf_reset(symsync);
+    symsync_crcf_set_lf_bw(symsync, 0.001f);
     modem_reset(dpsk_modem);
 
     // New burst received, the symbol sync block has to lock on
@@ -227,5 +242,5 @@ bool SymbolReader::is_frame_complete(const Frame *f) {
     // we read the preamble + -1th bit to initialize differential-BPSK demodulation
     // payload, obviously
     // the symbol-sync's filters has their own delay
-    return f->softbits.size() >= (f->preamble_size + 1 + f->payload_size + filter_delay);
+    return f->softbits.size() > (f->preamble_size + 1 + f->payload_size + 2*filter_delay);
 }

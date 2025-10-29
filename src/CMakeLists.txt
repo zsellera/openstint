@@ -14,17 +14,17 @@ find_library(LIQUID_LIB REQUIRED NAMES liquid liquid-dsp)
 find_path(HACKRF_INCLUDE_DIR NAMES libhackrf/hackrf.h)
 find_library(HACKRF_LIB REQUIRED NAMES hackrf)
 
-# find_path(ZeroMQ_INCLUDE_DIR NAMES zmq.hpp)
-# find_library(ZeroMQ_LIBRARY NAMES zmq)
+find_path(FEC_INCLUDE_DIR NAMES fec.h)
+find_library(FEC_LIB NAMES fec)
 
 find_package(cppzmq REQUIRED)
 
 target_compile_options(main PRIVATE -O0 -march=armv8-a -Wno-return-type-c-linkage -Wno-deprecated-declarations -I ".")
-target_include_directories(main PRIVATE ${LIQUID_INCLUDE_DIR} ${HACKRF_INCLUDE_DIR} ${cppzmq_INCLUDE_DIR})
+target_include_directories(main PRIVATE ${LIQUID_INCLUDE_DIR} ${HACKRF_INCLUDE_DIR} ${cppzmq_INCLUDE_DIR} ${FEC_INCLUDE_DIR})
 target_link_libraries(main
     ${LIQUID_LIB}
     ${HACKRF_LIB}
-    ${ZeroMQ_LIBRARY}
+    ${FEC_LIB}
     cppzmq
     m
     c
