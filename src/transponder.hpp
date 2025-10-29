@@ -17,6 +17,7 @@ struct TransponderProps {
     std::string_view prefix;
 };
 
+void init_transponders();
 int decode_openstint(const uint8_t *softbits, uint32_t *transponder_id);
 int decode_legacy(const uint8_t *softbits, uint32_t *transponder_id);
 

@@ -45,7 +45,7 @@ static const uint8_t DEFAULT_LNA_GAIN      = 32;           // 0-40 in steps of 8
 static const uint8_t DEFAULT_VGA_GAIN      = 24;           // 0-62
 
 static enum FrameParseMode { FRAME_SEEK, FRAME_FOUND } frame_parse_mode = FRAME_SEEK;
-static FrameDetector frame_detector(0.64f);
+static FrameDetector frame_detector(0.9f);
 static SymbolReader symbol_reader;
 static Frame frame;
 
@@ -68,7 +68,14 @@ void process_frame(Frame* frame) {
     uint32_t transponder_id;
     switch (frame->transponder_type) {
         case TransponderType::OpenStint:
-        // TODO
+        if (decode_openstint(softbits, &transponder_id)) {
+            // std::cout << transponder_id << std::endl;
+            if (transponder_id < 10000000) {
+                passing_detector.append(transponder_id, frame->timestamp, frame->rssi);
+            } else {
+                // TODO
+            }
+        }
         break;
         case TransponderType::Legacy:
             if (decode_legacy(softbits, &transponder_id)) {
@@ -140,6 +147,8 @@ int main(int argc, char** argv) {
     const uint32_t filter_bw = BB_FILTER_BW;
     const uint8_t lna_gain = DEFAULT_LNA_GAIN;
     const uint8_t vga_gain = DEFAULT_VGA_GAIN;
+
+    init_transponders();
 
     //  Prepare our context and publisher
     zmq::context_t context(1);

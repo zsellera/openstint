@@ -38,7 +38,7 @@ class FrameDetector {
     // preamble matching
     static inline const Preamble<uint16_t> p_openstint { transponder_props(TransponderType::OpenStint).bpsk_preamble };
     static inline const Preamble<uint16_t> p_legacy { transponder_props(TransponderType::Legacy).bpsk_preamble };
-    CircBuff<uint16_t> buffer;
+    CircBuff<uint16_t> buffers[samples_per_symbol];
     float threshold;
 
     // stream statistics:
@@ -63,7 +63,7 @@ public:
 
 class SymbolReader {
     static constexpr int samples_per_symbol = 4;
-    static constexpr int filter_delay = 3;
+    static constexpr int filter_delay = 5;
     static constexpr int preamble_length = 16;
 
     symsync_crcf symsync;

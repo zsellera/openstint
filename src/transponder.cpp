@@ -3,6 +3,30 @@
 #include <bit>
 #include <string>
 
+#include <stdio.h>
+
+extern "C" {
+#include <fec.h>
+}
+#include <liquid/liquid.h>
+
+static void *viterbi_decoder;
+static crc_scheme crc8_scheme = LIQUID_CRC_8;
+
+void init_transponders() {
+    viterbi_decoder = create_viterbi29(32);
+}
+
+int decode_openstint(const uint8_t *softbits, uint32_t *transponder_id) {
+    uint8_t decoded[4];
+
+    init_viterbi29(viterbi_decoder, 0);
+    update_viterbi29_blk(viterbi_decoder, const_cast<uint8_t*>(softbits), 32+8); // khm...
+    chainback_viterbi29(viterbi_decoder, decoded, 32, 0);
+    
+    *transponder_id = (static_cast<uint32_t>(decoded[0]) << 16) | (static_cast<uint32_t>(decoded[1]) << 8) | static_cast<uint32_t>(decoded[2]);
+    return crc_validate_message(crc8_scheme, decoded, 3, decoded[3]);
+}
 
 int decode_legacy(const uint8_t *softbits, uint32_t *transponder_id) {
     // RC3 use a K=24, r=1/2 convolutional encoder with polynoms 0xEEC20F and 0xEEC20D
