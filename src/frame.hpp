@@ -6,6 +6,8 @@
 #include <optional>
 #include <ostream>
 
+#include "summing_buffer.hpp"
+
 #include "transponder.hpp"
 #include "preamble.hpp"
 
@@ -21,6 +23,7 @@ struct Frame {
     std::vector<uint8_t> softbits;
 
     uint64_t timestamp;
+    float symbol_magnitude;
     float rssi; // *relative* to 1 LSB
     float snr;
     
@@ -67,7 +70,8 @@ class SymbolReader {
     static constexpr int preamble_length = 16;
 
     symsync_crcf symsync;
-    modemcf dpsk_modem;
+    modemcf bpsk_modem;
+    SummingBuffer<16, std::complex<float>> symbol2_buffer;
 
     // reading a matched preamble might require lookback into
     // the previous buffer. this contain the last section of

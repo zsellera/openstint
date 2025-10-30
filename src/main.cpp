@@ -58,7 +58,7 @@ void signal_handler(int signum) {
 }
 
 void process_frame(Frame* frame) {
-    // std::cout << "frame " << *frame << std::endl;
+    // std::cout << "\n\nframe " << *frame << std::endl;
     const uint8_t *softbits = frame->bits();
     if (!softbits) {
         // preamble not found
@@ -69,7 +69,6 @@ void process_frame(Frame* frame) {
     switch (frame->transponder_type) {
         case TransponderType::OpenStint:
         if (decode_openstint(softbits, &transponder_id)) {
-            // std::cout << transponder_id << std::endl;
             if (transponder_id < 10000000) {
                 passing_detector.append(transponder_id, frame->timestamp, frame->rssi);
             } else {
@@ -106,7 +105,7 @@ extern "C" int rx_callback(hackrf_transfer* transfer) {
             const std::optional<TransponderType> detected = frame_detector.process_baseband(samples+idx);
             if (detected) {
                 frame_parse_mode = FRAME_FOUND;
-                frame_detected = true;
+                frame_detected = true; // do not use this buffer for noisefloor calculation
                 uint64_t timestamp = buffer_timestamp + (1000 * idx) / SAMPLE_RATE;
                 frame = Frame(detected.value(), timestamp, frame_detector.symbol_energy2(), frame_detector.noise_energy2());
                 symbol_reader.read_preamble(&frame, frame_detector.dc_offset(), samples, idx+4);
