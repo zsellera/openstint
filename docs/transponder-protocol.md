@@ -15,9 +15,13 @@ uint32_t transponder_id = crc32(serial, 12) % 10000000U;
 
 ## Radio
 
-The frames are differential-encoded and transmitted with BPSK modulation with a 1.25 MHz symbol rate aligned to an 5 MHz carrier. The transponder id should be transmitted *on average* every 1.25 ms, with a random jitter added. There must be at least 750 us silence between subsequent frames.
+The frames are encoded and transmitted with BPSK modulation with a 1.25 MHz symbol rate aligned to an 5 MHz carrier. The transponder id should be transmitted *on average* every 1.5 ms. The transmission period should have ±750 us random jitter added. There must be at least 750 us silence between subsequent frames.
 
-The frames are typically 100 bits of length. As such, the transmission duration is 80 us (100/1.25meg). This yields a channel usage of 6.4%, allowing other transponders to co-exist.
+The frames are typically 104 bits of length. As such, the transmission duration is 83.2 us (104/1.25meg). This yields a channel usage of ~5.5%, allowing other transponders to co-exist.
+
+Assuming a 30 cm wide detection window, a car at v=10 m/s spends 30 ms in the detection window. On average 20 transponder transmissions are happening during this timeframe, which is more than enough for a passing detection.
+
+Note: OpenStint protocol does not employ differential-encoding before transmission. While it makes bit syncronization harder, differential-encoding can cause double bit errors on the receiver side, making successful error correction less likely.
 
 ## Framing
 

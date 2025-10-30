@@ -48,10 +48,15 @@ int decode_legacy(const uint8_t *softbits, uint32_t *transponder_id) {
     // Before encoding, the 24 bit transponder id is scrambled with extra 8 bits,
     // resulting in 32 bits. This is further appended with 0x00 so viterbi-decoder (???)
     // can process it. The rate=1/2 encoder generates 2x40=80 bits in total.
+    int sym = 0, prev_sym = 0;  // differential decoder
     for (int i=0; i<80; i+=2) {
-        int b0 = (softbits[i+0] > 127) ? 1 : 0; // decode softbit bit0
-        int b1 = (softbits[i+1] > 127) ? 1 : 0; // decode softbit bit1
         int p = std::popcount(shreg & 0xEEC20C) % 2; // parity bit from SHREG
+
+        // differential-BPSK is decoded here as well (sym ^ prev_sym magic):
+        sym = (softbits[i+0] > 127) ? 1 : 0;
+        int b0 = sym ^ prev_sym;
+        prev_sym = (softbits[i+1] > 127) ? 1 : 0;
+        int b1 = prev_sym ^ sym; // decode softbit bit1
 
         int shreg1 = (shreg & 2) ? 1 : 0; // shift register last-1 bit
         // two estimates for SHREG[0] (should be equal):
