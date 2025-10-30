@@ -23,14 +23,15 @@ The frames are typically 100 bits of length. As such, the transmission duration 
 
 The frame's structure, in baseband, is defined as:
 ```
-            | <------------------ preamble -------------------> | <------------- message ------------->
-init seq.   | 11-bit Barker code               | 5-bit preamble | 80-bit message
--1 -1 -1 -1 | +1 +1 +1 -1 -1 -1 +1 -1 -1 +1 -1 | +1 -1 +1 -1 +1 | <convolutional-coder encoded message>
+<-- init -->| <------------------ preamble -------------------> | <------------- message -------------> | <-- tail -->
+            | 13-bit Barker code                     |   pad    | 80-bit message                        | any seq
+-1 -1 -1 -1 | +1 +1 +1 +1 +1 -1 -1 +1 +1 -1 +1 -1 +1 | -1 -1 -1 | <convolutional-coder encoded message> | +1 -1 +1 -1
 ```
 
-* The init sequence can trigger energy-based frame detectors (start processing the baseband). It must consists of at least 3, at most 8 `-1 + 0i` symbols.
-* The preamble is of 16 bits, starting with a 11-bit Barker code followed `+1 -1 +1 -1 +1` sequence. This allows correlation-based detectors to indicate "start of frame" while also aid initializing the symbol syncronizer.
-* The message is encoded by a convolutional encoder of K=9, rate=1/2, polynoms of `0x1af` and `0x11d`. This is libfec's `viterbi29` implementation btw.
+* The *init sequence* can trigger energy-based frame detectors (start processing the baseband). It must consists of at least 4, at most 8 `-1 + 0i` symbols.
+* The *preamble* is of 16 bits, starting with a 13-bit Barker code followed `-1 -1 -1` sequence (to pad it to 16 bits). This allows correlation-based detectors to indicate "start of frame" while also aid initializing the symbol syncronizer.
+* The *message* is encoded by a convolutional encoder of K=9, rate=1/2, polynoms of `0x1af` and `0x11d`. This is libfec's `viterbi29` implementation btw.
+* Digital filters have delay. An optional *tail sequence* can help getting all symbols out from various filter pipelines while still processing similar-magnitude data stream. Maximum of 8 symbols.
 
 The preamble is not part of the convolutional encoded data stream.
 
@@ -41,7 +42,9 @@ The transponder message is as follows:
 <transponder_id[23:16]> <transponder_id[15:8]> <transponder_id[7:0]> <crc8> 0x00
 ```
 
-The tailing `0x00` 8 bits are required by the viterbi trellis to decode the message.
+Details:
+ * CRC8 is the [liquid-dsp](https://liquidsdr.org/) implementation. Transponder's bytes are processed in big-endian byte order.
+ * The tailing `0x00` 8 bits are required by the viterbi trellis to decode the message.
 
 After the K=9 convolutional encoder, this structure has the following error characteristic:
 

@@ -22,7 +22,7 @@ int decode_openstint(const uint8_t *softbits, uint32_t *transponder_id);
 int decode_legacy(const uint8_t *softbits, uint32_t *transponder_id);
 
 inline constexpr TransponderProps TRANSPONDER_PROPERTIES[] = {
-    {0xe255, 0x937f, 80, "OPN"},
+    {0xf9a8, 0x857c, 80, "OPN"},
     {0x51e4, 0x7916, 80, "AMB"}
 };
 

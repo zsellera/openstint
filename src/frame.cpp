@@ -217,16 +217,17 @@ void SymbolReader::read_preamble0(Frame *dst, std::complex<int8_t> offset, const
 
 void SymbolReader::read_preamble(Frame *dst, std::complex<int8_t> offset, const std::complex<int8_t> *src, int end) {
     symsync_crcf_reset(symsync);
-    symsync_crcf_set_lf_bw(symsync, 0.001f);
+    symsync_crcf_set_lf_bw(symsync, 0.002f);
+    symsync_crcf_unlock(symsync);
     modem_reset(dpsk_modem);
 
     // New burst received, the symbol sync block has to lock on
     // Read the preamble, but do not save it, as it likely contain
     // some junk. The preambles are designed for quick symsync lock.
     read_preamble0(nullptr, offset, src, end);
-    read_preamble0(nullptr, offset, src, end);
     // re-read preamble for real now
     read_preamble0(dst, offset, src, end);
+    symsync_crcf_lock(symsync);
 }
 
 void SymbolReader::update_reserve_buffer(const std::complex<int8_t> *src, int end) {
