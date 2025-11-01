@@ -2,8 +2,10 @@
 #include "transponder.hpp"
 
 #include <bit>
-#include <string>
 #include <complex>
+#include <cstring>
+#include <iterator>
+#include <algorithm>
 
 #include "complex_cast.hpp"
 
@@ -105,7 +107,7 @@ std::optional<TransponderType> FrameDetector::process_baseband(const std::comple
     std::transform(
         sb, sb + samples_per_symbol,
         mag2s,
-        [this](const std::complex<int8_t> s) { return std::norm(complex_cast<int16_t>(s)); }
+        [](const std::complex<int8_t> s) { return std::norm(complex_cast<int16_t>(s)); }
     );
 
     // run 4 circular buffers in parallel
@@ -149,18 +151,18 @@ void FrameDetector::reset_statistics_counters() {
     n = 0;
 }
 
-const float FrameDetector::symbol_energy2() {
+float FrameDetector::symbol_energy2() const {
     uint32_t wes[4] = { buffers[0].window_energy, buffers[1].window_energy, buffers[2].window_energy, buffers[3].window_energy }; 
     int idx = std::distance(wes, std::max_element(wes, wes+4)); // ~maxarg
 
     return static_cast<float>(buffers[idx].window_energy) / 16.0f;
 }
 
-const float FrameDetector::noise_energy2() {
+float FrameDetector::noise_energy2() const {
     return variance2;
 }
 
-const std::complex<int8_t> FrameDetector::dc_offset() {
+std::complex<int8_t> FrameDetector::dc_offset() const {
     return offset;
 }
 
@@ -198,7 +200,7 @@ uint32_t SymbolReader::read_single(Frame *dst, const std::complex<int8_t> offset
     );
     // demodulate
     if (dst) {
-        for (int i=0; i<symbols_written; ++i) {
+        for (auto i=0u; i<symbols_written; ++i) {
             // PSK phase tracking (bpsk => order-2)
             auto sum = symbol2_buffer.push(symbols[i] * symbols[i]);
             float phase = std::arg(sum);
@@ -251,7 +253,7 @@ void SymbolReader::read_preamble(Frame *dst, std::complex<int8_t> offset, const 
 
 void SymbolReader::update_reserve_buffer(const std::complex<int8_t> *src, int end) {
     const int n_preserved = MAX_PREAMBLE * samples_per_symbol;
-    memcpy(reserve_buffer, src + end - n_preserved, n_preserved * sizeof(std::complex<uint8_t>));
+    std::memcpy(reserve_buffer, src + end - n_preserved, n_preserved * sizeof(std::complex<uint8_t>));
 }
 
 void SymbolReader::read_symbol(Frame *dst, std::complex<int8_t> offset, const std::complex<int8_t> *src) {

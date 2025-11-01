@@ -1,6 +1,6 @@
 #pragma once
 
-#include <memory>
+#include <string>
 
 template<unsigned int window_len, typename T>
 struct SummingBuffer {

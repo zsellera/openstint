@@ -69,10 +69,10 @@ void process_frame(Frame* frame) {
     switch (frame->transponder_type) {
         case TransponderType::OpenStint:
         if (decode_openstint(softbits, &transponder_id)) {
-            if (transponder_id < 10000000) {
+            if (transponder_id < 10000000u) {
                 passing_detector.append(transponder_id, frame->timestamp, frame->rssi);
-            } else {
-                // TODO
+            } else if ((transponder_id & 0x00A00000) == 0x00A00000) {
+                std::cout << "TIMESYNC " << (transponder_id & 0x000FFFFF) << std::endl;
             }
         }
         break;
@@ -96,11 +96,11 @@ extern "C" int rx_callback(hackrf_transfer* transfer) {
         std::chrono::steady_clock::now().time_since_epoch()
     ).count();
 
-    int sample_count = transfer->valid_length / 2;
+    uint32_t sample_count = transfer->valid_length / 2;
     const std::complex<int8_t> *samples = reinterpret_cast<const std::complex<int8_t>*>(transfer->buffer);
     
     bool frame_detected = false;
-    for (int idx=0; (idx+SAMPLES_PER_SYMBOL)<=sample_count; idx+=SAMPLES_PER_SYMBOL) {
+    for (uint32_t idx=0; (idx+SAMPLES_PER_SYMBOL)<=sample_count; idx+=SAMPLES_PER_SYMBOL) {
         if (frame_parse_mode == FRAME_SEEK) {
             const std::optional<TransponderType> detected = frame_detector.process_baseband(samples+idx);
             if (detected) {
