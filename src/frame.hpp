@@ -5,6 +5,7 @@
 #include <complex>
 #include <optional>
 #include <ostream>
+#include <vector>
 
 #include "summing_buffer.hpp"
 
@@ -59,9 +60,9 @@ public:
     void update_statistics();
     void reset_statistics_counters();
 
-    const float symbol_energy2();
-    const float noise_energy2();
-    const std::complex<int8_t> dc_offset();
+    float symbol_energy2() const;
+    float noise_energy2() const;
+    std::complex<int8_t> dc_offset() const;
 };
 
 class SymbolReader {
