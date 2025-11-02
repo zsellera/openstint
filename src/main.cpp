@@ -70,16 +70,18 @@ void process_frame(Frame* frame) {
         case TransponderType::OpenStint:
         if (decode_openstint(softbits, &transponder_id)) {
             if (transponder_id < 10000000u) {
-                passing_detector.append(transponder_id, frame->timestamp, frame->rssi());
+                passing_detector.append(frame->timestamp, transponder_id, frame->rssi());
             } else if ((transponder_id & 0x00A00000) == 0x00A00000) {
-                std::cout << "TIMESYNC " << (transponder_id & 0x000FFFFF) << std::endl;
+                uint32_t transponder_timestamp = (transponder_id & 0x000FFFFF);
+                passing_detector.timesync(frame->timestamp, transponder_timestamp);
+                std::cout << "TIMESYNC " << transponder_timestamp << std::endl;
             }
         }
         break;
         case TransponderType::Legacy:
             if (decode_legacy(softbits, &transponder_id)) {
                 if (transponder_id < 10000000) {
-                    passing_detector.append(transponder_id, frame->timestamp, frame->rssi());
+                    passing_detector.append(frame->timestamp, transponder_id, frame->rssi());
                 }
             }
         break;
@@ -228,10 +230,16 @@ int main(int argc, char** argv) {
         const auto now = std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now().time_since_epoch()
         ).count();
+        
+        std::vector<TimeSync> timesyncs = passing_detector.identify_timesyncs(500ul);
+        for (const auto& time_sync : timesyncs) {
+            const std::string report = std::format("T {} {} {}", time_sync.timestamp, time_sync.transponder_id, time_sync.transponder_timestamp);
+            std::cout << report << std::endl;
+        }
+
         std::vector<Passing> passings = passing_detector.identify_passings(now - 250ul);
         for (const auto& passing : passings) {
-            // std::cout << passing.transponder_id << " " << passing.timestamp << " " << passing.rssi << " " << passing.hits << std::endl;
-            const std::string report = std::format("{} {} {:.2f} {}", passing.timestamp, passing.transponder_id, passing.rssi, passing.hits);
+            const std::string report = std::format("P {} {} {:.2f} {}", passing.timestamp, passing.transponder_id, passing.rssi, passing.hits);
 
             std::cout << report << std::endl;
             publisher.send(zmq::buffer(report), zmq::send_flags::none);
