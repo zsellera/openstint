@@ -6,14 +6,29 @@
 #include "passing.hpp"
 
 #define REPORT_HIT_LIMIT 2
+#define TRANSPONDER_DETECTION_MSG_LIMIT (1<<12)
 
-void PassingDetector::append(int32_t transponder_id, 
-                             uint64_t timestamp, 
+void PassingDetector::append(uint64_t timestamp,
+                             int32_t transponder_id, 
                              float rssi)
 {
     Detection d(timestamp, rssi);
     std::lock_guard<std::mutex> lock(mutex);
-    detections[transponder_id].push_back(std::move(d));
+
+    // this is an optimalization / guard: if a car parks on the loop,
+    // we could fill up the memory and things go get crazy. A transponder
+    // sends on avg. ~700 messages a second. A sane limit must apply.
+    if (detections[transponder_id].size() > TRANSPONDER_DETECTION_MSG_LIMIT) {
+        detections[transponder_id].back() = d;
+    } else {
+        detections[transponder_id].push_back(std::move(d));
+    }
+}
+
+void PassingDetector::timesync(uint64_t timestamp, uint32_t transponder_timestamp) {
+    TimeSyncMsg ts(timestamp, transponder_timestamp);
+    std::lock_guard<std::mutex> lock(mutex);
+    timesync_messages.push_back(std::move(ts));
 }
 
 uint64_t timestamp_at_max_rssi(const std::vector<Detection>& detections) {
@@ -48,7 +63,7 @@ Passing create_passing(uint32_t transponder_id, const std::vector<Detection>& de
     return p;
 }
 
-std::vector<Passing> PassingDetector::identify_passings(int64_t deadline) {
+std::vector<Passing> PassingDetector::identify_passings(uint64_t deadline) {
     std::lock_guard<std::mutex> lock(mutex);
 
     // collect passings:
@@ -70,4 +85,38 @@ std::vector<Passing> PassingDetector::identify_passings(int64_t deadline) {
     }
 
     return passings;
+}
+
+std::vector<TimeSync> PassingDetector::identify_timesyncs(uint64_t margin) {
+    std::vector<TimeSync> timesyncs;
+
+    std::lock_guard<std::mutex> lock(mutex);
+    // verify all timesync messages can belong only to a single transponder
+    for (const auto& ts_msg : timesync_messages) {
+        uint32_t matching_transponder = 0;
+        int matching_transponder_count = 0;
+
+        for (const auto& [transpoder_id, detection_vec] : detections) {
+            if (detection_vec.empty()) { continue; }
+            bool front_ok = (detection_vec.front().timestamp - margin) < ts_msg.timestamp;
+            bool back_ok = (detection_vec.back().timestamp + margin) > ts_msg.timestamp;
+            if  (front_ok && back_ok) {
+                ++matching_transponder_count;
+                matching_transponder = transpoder_id;
+            }
+        }
+        if (matching_transponder_count == 1) {
+            TimeSync ts = {
+                .timestamp = ts_msg.timestamp,
+                .transponder_id = matching_transponder,
+                .transponder_timestamp = ts_msg.transponder_timestamp
+            };
+            timesyncs.push_back(std::move(ts));
+        }
+    }
+
+    // erase all processed timesync messages
+    timesync_messages.clear();
+
+    return timesyncs;
 }
