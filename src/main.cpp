@@ -70,7 +70,7 @@ void process_frame(Frame* frame) {
         case TransponderType::OpenStint:
         if (decode_openstint(softbits, &transponder_id)) {
             if (transponder_id < 10000000u) {
-                passing_detector.append(transponder_id, frame->timestamp, frame->rssi);
+                passing_detector.append(transponder_id, frame->timestamp, frame->rssi());
             } else if ((transponder_id & 0x00A00000) == 0x00A00000) {
                 std::cout << "TIMESYNC " << (transponder_id & 0x000FFFFF) << std::endl;
             }
@@ -79,7 +79,7 @@ void process_frame(Frame* frame) {
         case TransponderType::Legacy:
             if (decode_legacy(softbits, &transponder_id)) {
                 if (transponder_id < 10000000) {
-                    passing_detector.append(transponder_id, frame->timestamp, frame->rssi);
+                    passing_detector.append(transponder_id, frame->timestamp, frame->rssi());
                 }
             }
         break;
@@ -107,7 +107,7 @@ extern "C" int rx_callback(hackrf_transfer* transfer) {
                 frame_parse_mode = FRAME_FOUND;
                 frame_detected = true; // do not use this buffer for noisefloor calculation
                 uint64_t timestamp = buffer_timestamp + (1000 * idx) / SAMPLE_RATE;
-                frame = Frame(detected.value(), timestamp, frame_detector.symbol_energy2(), frame_detector.noise_energy2());
+                frame = Frame(detected.value(), timestamp, frame_detector.symbol_energy2());
                 symbol_reader.read_preamble(&frame, frame_detector.dc_offset(), samples, idx+4);
             }
         } else if (frame_parse_mode == FRAME_FOUND) {

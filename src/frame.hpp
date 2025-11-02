@@ -25,13 +25,14 @@ struct Frame {
 
     uint64_t timestamp;
     float symbol_magnitude;
-    float rssi; // *relative* to 1 LSB
-    float snr;
+    float evm_sum;
     
     Frame();
-    Frame(TransponderType transponder_type, uint64_t timestamp, float symbol_e2, float noise_e2);
+    Frame(TransponderType transponder_type, uint64_t timestamp, float preamble_energy);
 
     const uint8_t* bits();
+    float rssi() const;
+    float evm() const;
 };
 
 std::ostream& operator <<(std::ostream& os, const Frame& f);
@@ -94,6 +95,6 @@ public:
     bool is_frame_complete(const Frame *f);
 
 private:
-    uint32_t read_single(Frame *dst, const std::complex<int8_t> offset, const std::complex<int8_t> *src);
-    void read_preamble0(Frame *dst, std::complex<int8_t> offset, const std::complex<int8_t> *src, int end);
+    uint32_t read_single(Frame *dst, float scale, const std::complex<int8_t> offset, const std::complex<int8_t> *src);
+    void read_preamble0(Frame *dst, float scale, std::complex<int8_t> offset, const std::complex<int8_t> *src, int end);
 };

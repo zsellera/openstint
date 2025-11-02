@@ -6,6 +6,7 @@
 #include <cstring>
 #include <iterator>
 #include <algorithm>
+#include <iostream>
 
 #include "complex_cast.hpp"
 
@@ -18,18 +19,15 @@ Frame::Frame() {
     preamble_size = payload_size = 0;
     softbits.reserve(FRAME_MAX_SYMBOL_SPACE);
     timestamp = 0;
-    rssi = snr = symbol_magnitude = 0;
+    symbol_magnitude = evm_sum = 0;
 }
 
-Frame::Frame(TransponderType _ttype, uint64_t _ts, float symbol_e2, float noise_e2) 
-    : transponder_type(_ttype), timestamp(_ts) {
+Frame::Frame(TransponderType _ttype, uint64_t _ts, float preamble_energy)
+    : transponder_type(_ttype), timestamp(_ts), evm_sum(0) {
     softbits.reserve(FRAME_MAX_SYMBOL_SPACE);
     payload_size = transponder_props(transponder_type).payload_size;
     preamble_size = 16; // TODO
-    symbol_magnitude = std::sqrtf(symbol_e2);
-    rssi = std::log2f(symbol_magnitude);
-    float noise_floor = std::log2f(noise_e2) / 2.0f;
-    snr = rssi - noise_floor; // log(a/b) = log(a)-log(b)
+    symbol_magnitude = std::sqrtf(preamble_energy) / std::sqrtf(2.0f);
 }
 
 uint32_t concat_bits32(uint8_t *soft_bits) {
@@ -88,10 +86,18 @@ const uint8_t* Frame::bits() {
     return softbits.data() + pos + preamble_size;
 }
 
+float Frame::rssi() const {
+    return std::log2f(symbol_magnitude);
+}
+
+float Frame::evm() const {
+    return evm_sum / softbits.size();
+}
+
 std::ostream& operator <<(std::ostream& os, const Frame& f) {
     std::stringstream s;
-    copy(f.softbits.begin(), f.softbits.end(), std::ostream_iterator<int>(s, ", "));
-    return os << transponder_props(f.transponder_type).prefix << " T:" << f.timestamp << " RSSI:" << f.rssi << " SNR:" << f.snr << " [" << s.str() << "]";
+    std::copy(f.softbits.begin(), f.softbits.end(), std::ostream_iterator<int>(s, ", "));
+    return os << transponder_props(f.transponder_type).prefix << " T:" << f.timestamp << " RSSI:" << f.rssi() << " EVM:" << f.evm() << " [" << s.str() << "]";
 }
 
 FrameDetector::FrameDetector(float _threshold) : threshold(_threshold) {};
@@ -182,11 +188,14 @@ SymbolReader::~SymbolReader() {
     modemcf_destroy(bpsk_modem);
 }
 
-uint32_t SymbolReader::read_single(Frame *dst, const std::complex<int8_t> offset, const std::complex<int8_t> *src) {
+uint32_t SymbolReader::read_single(Frame *dst, float scale, const std::complex<int8_t> offset, const std::complex<int8_t> *src) {
     // convert i8 to f32
     std::complex<float> bf[samples_per_symbol];
-    for (int j=0; j<samples_per_symbol; ++j) {
+    for (int j=0; j<samples_per_symbol; ++j) { // something like vcvt_s32_f32
         bf[j] = complex_cast<float>(src[j]-offset);
+    }
+    for (int j=0; j<samples_per_symbol; ++j) {
+         bf[j] /= scale; // VMUL.F32
     }
     // symbol sync
     std::complex<float> symbols[samples_per_symbol];
@@ -204,18 +213,19 @@ uint32_t SymbolReader::read_single(Frame *dst, const std::complex<int8_t> offset
             // PSK phase tracking (bpsk => order-2)
             auto sum = symbol2_buffer.push(symbols[i] * symbols[i]);
             float phase = std::arg(sum);
-            std::complex<float> correction = std::polar(1.0f, -phase/2.0f) / dst->symbol_magnitude;
+            std::complex<float> correction = std::polar(1.0f, -phase/2.0f);
             // actually demodulate:
             unsigned int bit; // bit-level decoding
             uint8_t soft_bit; // how likely the symbol is
-            modem_demodulate_soft(bpsk_modem, symbols[i]*correction, &bit, &soft_bit);
+            modemcf_demodulate_soft(bpsk_modem, symbols[i]*correction, &bit, &soft_bit);
             dst->softbits.push_back(soft_bit);
+            dst->evm_sum += modemcf_get_demodulator_evm(bpsk_modem);
         }
     }
     return symbols_written;
 }
 
-void SymbolReader::read_preamble0(Frame *dst, std::complex<int8_t> offset, const std::complex<int8_t> *src, int end) {
+void SymbolReader::read_preamble0(Frame *dst, float scale, std::complex<int8_t> offset, const std::complex<int8_t> *src, int end) {
     // as differential-encoded bits are BPSK-modulated, we need the -1th symbol
     // to correctly decode the first bit => read (preamble_length+1)
     // note, as min(end) >= 4, MAX_PREAMBLE can indeed be 16 for 16-bit preambles
@@ -225,12 +235,12 @@ void SymbolReader::read_preamble0(Frame *dst, std::complex<int8_t> offset, const
         // the previous buffer as well
         start += (MAX_PREAMBLE * samples_per_symbol); // reserve buffer's size
         for (int i=start; i<MAX_PREAMBLE * samples_per_symbol; i+=4) {
-            read_single(dst, offset, reserve_buffer+i);
+            read_single(dst, scale, offset, reserve_buffer+i);
         }
         start = 0;
     }
     for (int i=start; i<end; i+=4) {
-        read_single(dst, offset, src+i);
+        read_single(dst, scale, offset, src+i);
     }
 }
 
@@ -244,11 +254,11 @@ void SymbolReader::read_preamble(Frame *dst, std::complex<int8_t> offset, const 
     // New burst received, the symbol sync block has to lock on
     // Read the preamble, but do not save it, as it likely contain
     // some junk. The preambles are designed for quick symsync lock.
-    read_preamble0(nullptr, offset, src, end);
-    read_preamble0(nullptr, offset, src, end);
-    symsync_crcf_lock(symsync);
+    read_preamble0(nullptr, dst->symbol_magnitude, offset, src, end);
+    read_preamble0(nullptr, dst->symbol_magnitude, offset, src, end);
+    // symsync_crcf_lock(symsync);
     // re-read preamble for real now
-    read_preamble0(dst, offset, src, end);
+    read_preamble0(dst, dst->symbol_magnitude, offset, src, end);
 }
 
 void SymbolReader::update_reserve_buffer(const std::complex<int8_t> *src, int end) {
@@ -257,7 +267,7 @@ void SymbolReader::update_reserve_buffer(const std::complex<int8_t> *src, int en
 }
 
 void SymbolReader::read_symbol(Frame *dst, std::complex<int8_t> offset, const std::complex<int8_t> *src) {
-    read_single(dst, offset, src);
+    read_single(dst, dst->symbol_magnitude, offset, src);
 }
 
 bool SymbolReader::is_frame_complete(const Frame *f) {
