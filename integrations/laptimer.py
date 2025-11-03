@@ -53,8 +53,8 @@ def main():
                 timecode = int(parts[1])
                 # transponder_type = parts[2]
                 transponder_id = int(parts[3])
-                # rssi = float(parts[3])
-                # hit_count = int(parts[4])
+                # rssi = float(parts[4])
+                # hit_count = int(parts[5])
             except ValueError:
                 continue  # skip malformed data
 
