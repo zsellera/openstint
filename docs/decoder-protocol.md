@@ -2,8 +2,8 @@
 
 This page describes how to get information out of the OpenStint decoder software.
 
-The decoder protocol costsis of one-way *text-based* messages over *ZeroMQ pub-sub* channel.
-* ZeroMQ makes sure messages are consumed as a single entity, in a fault-tolearant manner. There is no need for custom frame detection (ie. P3's `0x8D` or Cano's `\n`), ZeroMQ does this for us ("consumed as a single entity"). There is also little to no need to worry about lost TCP connections, the ZeroMQ client reconnects when possible ("fault tolerant"). Note, the pub-sub structure does not buffer messages though, meaning unseen messages are lost.
+The decoder protocol costsis of one-way *text-based* messages over a *ZeroMQ pub-sub* channel.
+* [ZeroMQ](https://zguide.zeromq.org/) makes sure messages are consumed as a single entity, in a fault-tolearant manner. There is no need for custom frame detection (ie. P3's `0x8D` or Cano's `\n`), ZeroMQ does this for us ("consumed as a single entity"). There is also little to no need to worry about lost TCP connections, the ZeroMQ client reconnects when possible ("fault tolerant"). Note, the pub-sub structure does not buffer messages though, meaning unseen messages are lost.
 * Messages are human-readable. Check out [example subscriber](../integrations/subscriber.py) for a quick demo.
 
 ## Protocol messages
@@ -21,9 +21,10 @@ if msg_type != "P":
 
 try:
     timecode = int(parts[1])
-    transponder_id = int(parts[2])
-    rssi = float(parts[3])
-    hit_count = int(parts[4])
+    transponder_type = parts[2]
+    transponder_id = int(parts[3])
+    rssi = float(parts[4])
+    hit_count = int(parts[5])
 except ValueError:
     continue  # skip malformed data
 ```
@@ -33,7 +34,7 @@ For a working laptimer example, check out [laptimer.py](../integrations/laptimer
 Other message parameters are reserved for future use. As such, do not do something like this, as it might fail with future versions:
 
 ```python
-msg_type, timecode, transponder_id, rssi, hit_count = msg.split()
+msg_type, timecode, transponder_type, transponder_id, rssi, hit_count = msg.split()
 ```
 
 
@@ -55,7 +56,7 @@ P 1658197696 AMB 3616557 4.24 30
 * `decoder_timestamp` is a milliseconds-resolution [steady clock](https://en.cppreference.com/w/cpp/chrono/steady_clock.html) epoch. As such, it is insensitive to updates to system time (NTP syncs). Also the value does not necessary reflect the system time or any unix epoch. The value of this counter is totally different between processes and machines, even if the machines are PTP-synced to an atomic clock or to a GPS. Treat it as a monotonic counter.
 * `transponder_type` defines if the passing is from an OpenStint (`OPN`) or legacy/RC3 transponder (`AMB`). The [OpenStint transponder protocol](transponder-protocol.md) is an error-corrected, highly sensitive, well-documented transponder protocol, and it is the preferred protocol of this project. The legacy/RC3 is there to provide backwards-compatibility with existing transponders (MyLaps/MRT/Vostok/etc.). RC4 support is not actively pursued.
 * `transponder_id` is a non-negative number. Both OpenStint and AMB/RC3 defines it as "up to 7 digits", but future transponder options might increase it's width. With OpenStint transponders, even single-digit (ie. `0`) transponder ids are possible.
-* `RSSI` means "**R**elative **S**ignal **S**trenght **I**ndicator. Relative means it is relative to the least significant digit of the ADC in the radio. It is calculated as "log<sub>2</sub>(average symbol magnitude)". As such, the value `0.0` means only the last bit encodes the information. While it is noise-dependent, based on testing, reliable reception is possible at RSSI=1.7, meaning the received baseband samples are between -3.3 .. +3.3 (`2 ^ 1.7`). The 8-bit ADC range is ±127. Reception above RSSI=6.6 (ca. ±100) is typically not reliable due to clipping.
+* `RSSI` is the median "**R**elative **S**ignal **S**trenght **I**ndicator. Relative means it is relative to the least significant digit of the ADC in the radio. It is calculated as "log<sub>2</sub>(average symbol power)". As such, the value `0.0` means only the last bit encodes the information. While it is noise-dependent, based on testing, reliable reception is possible at RSSI=1.9, meaning the received baseband samples are between -2..+2 (`±SQRT(2 ^ 1.9)`). The 8-bit ADC range is ±127. Reception above RSSI=12.5 (ca. ±100) is typically not reliable due to clipping.
 * `hit_count` tells about the number of successfully decoded tranponder messages during the passing. OpenStint transponders should transmit a message on average every 1.5 ms. RC4-hybrid transponders send at a similar rate, but only every ~4th is an RC3 message (which is the supported message format).
 
 Possible future extensions:

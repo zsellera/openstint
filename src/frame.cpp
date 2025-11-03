@@ -27,7 +27,7 @@ Frame::Frame(TransponderType _ttype, uint64_t _ts, float preamble_energy)
     softbits.reserve(FRAME_MAX_SYMBOL_SPACE);
     payload_size = transponder_props(transponder_type).payload_size;
     preamble_size = 16; // TODO
-    symbol_magnitude = std::sqrtf(preamble_energy) / std::sqrtf(2.0f);
+    symbol_magnitude = std::sqrtf(preamble_energy) / std::sqrtf(2.0f); // RMS to amplitude
 }
 
 uint32_t concat_bits32(uint8_t *soft_bits) {
@@ -87,7 +87,13 @@ const uint8_t* Frame::bits() {
 }
 
 float Frame::rssi() const {
-    return std::log2f(symbol_magnitude);
+    // symbol_magnitude is average amplitude
+    // symbol_magnitude / SQRT(2) => RMS
+    // (symbol_magnitude / SQRT(2))^2 ~= power
+    // log(power) = log(symbol_magnitude / SQRT(2))^2) = 
+    // ... = 2.0*log(symbol_magnitude) - 2.0*log2(SQRT(2)) =
+    // ... = 2.0*log(symbol_magnitude) - 1.0
+    return 2.0f * std::log2f(symbol_magnitude) - 1.0f;
 }
 
 float Frame::evm() const {

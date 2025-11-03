@@ -5,6 +5,9 @@
 #include <mutex>
 #include <map>
 #include <vector>
+#include <utility>
+
+#include "transponder.hpp"
 
 
 struct Detection {
@@ -22,25 +25,29 @@ struct TimeSyncMsg {
 };
 
 struct Passing {
-    uint32_t transponder_id;
     uint64_t timestamp;
+    TransponderType transponder_type;
+    uint32_t transponder_id;
     float rssi;
     size_t hits;
 };
 
 struct TimeSync {
-    uint32_t transponder_id;
     uint64_t timestamp;
+    TransponderType transponder_type;
+    uint32_t transponder_id;
     uint32_t transponder_timestamp;
 };
 
+typedef std::pair<TransponderType, uint32_t> TransponderKey;
+
 class PassingDetector {
-    std::map<uint32_t, std::vector<Detection>> detections;
+    std::map<TransponderKey, std::vector<Detection>> detections;
     std::vector<TimeSyncMsg> timesync_messages;
     std::mutex mutex;
 
 public:
-    void append(uint64_t timestamp, int32_t transponder_id, float rssi);
+    void append(uint64_t timestamp, TransponderType transponder_type, uint32_t transponder_id, float rssi);
     void timesync(uint64_t timestamp, uint32_t transponder_timestamp);
     std::vector<TimeSync> identify_timesyncs(uint64_t margin);
     std::vector<Passing> identify_passings(uint64_t deadline);

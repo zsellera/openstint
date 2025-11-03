@@ -11,7 +11,7 @@ messages. Out of these messages, some start with the letter "P".
 These lines represent vehicle passings on a racetrack.
 
 It has the following format:
-P <uint64_t timecode> <uint32_t transponder_id> <float rssi> <int hit_count> [other optional arguments]
+P <uint64_t timecode> <string transponder_type> <uint32_t transponder_id> <float rssi> <int hit_count> [other optional arguments]
 
 Collect "transponder_id"-"timecode" in a dict to remember the time of
 the last passing. If a transpoder_id had already been seen, print the
@@ -46,12 +46,13 @@ def main():
                 continue  # ignore non-"P" messages
 
             parts = msg.split()
-            if len(parts) < 5:
+            if len(parts) < 6:
                 continue  # malformed message
 
             try:
                 timecode = int(parts[1])
-                transponder_id = int(parts[2])
+                # transponder_type = parts[2]
+                transponder_id = int(parts[3])
                 # rssi = float(parts[3])
                 # hit_count = int(parts[4])
             except ValueError:
