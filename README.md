@@ -42,5 +42,8 @@ TODO
 
 * Increase compatibilty with existing software by implementing an OpenStint-P3 bridge
 * RTL-SDR support (inexpensive software defined radio)
+* Reference OpenStint transponder (PCB + gerbers/pos/bom + code)
 * Adaptive equalization to decrease EVM
 * Command-and-control interface and tooling
+
+**RC4 support is not actively pursued.** There are already multiple open-source transponder projects out there. One can order an assembled 2x10pcs OpenStint-compatible panel from JLCPCB for less than $100, including taxes and shipping. For a cost of a single brand-name transponder, a whole club can enjoy reliable laptiming. Then why bother decyphering a protocol which was designed to be and remain closed?!?
