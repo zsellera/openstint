@@ -1,8 +1,10 @@
-# OpenStint RC Laptiming Decoder
+# OpenStint Laptiming Decoder
 
 <img src="docs/logo.svg" alt="OpenStint logo" width="200"/>
 
-OpenSint is a software defined radio (SDR) based laptiming decoder, currently implemented with HackRF One. It works both with its own [transponder protocol](docs/transponder-protocol.md) and with AMB/RC3-based transponders. It can run on a Raspberry Pi 3b. Only a minimal electronics knowledge is required; soldering is not needed.
+OpenSint is a software defined radio (SDR) based laptiming decoder, currently implemented with HackRF One. It works both with its own [transponder protocol](docs/transponder-protocol.md) and with AMB/RC3-based transponders. It can run on a Raspberry Pi 3b. Only a minimal electronics knowledge is required; touching a soldering iron is optional.
+
+To learn more how SDR works, watch [Andreas Spiess](https://www.youtube.com/watch?v=xQVm-YTKR9s) explaining it.
 
 ## Quickstart (Ubuntu/RaspberryPi)
 
@@ -18,9 +20,10 @@ cmake .
 make
 ./src/openstint
 ```
-Vehicle passings are printed to `stdout`. The easiest method for testing with real transponders is with a *near-field magnetic probe* (sub-$10 stuff, search on ebay/aliexpress or see [Dave Jones DIY one](https://youtu.be/2xy3Hm1_ZqI?si=vmh87UB20cV0W4xt)).
+Vehicle passings are printed to `stdout` and published with ZeroMQ at `:5556`. The easiest method for testing with real transponders is with a *near-field magnetic probe* (sub-$10 stuff, search on ebay/aliexpress or see [Dave Jones DIY one](https://youtu.be/2xy3Hm1_ZqI?si=vmh87UB20cV0W4xt)).
 
 Note on Mac: we can't `brew install libfec`, compile and install it [from source](https://github.com/fblomqvi/libfec).
+
 If this is your first rodeo, `sudo apt-get install cmake build-essentials libtool autoconf` as well.
 
 ## Integrations
