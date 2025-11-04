@@ -10,7 +10,7 @@ set(CMAKE_CXX_FLAGS "-Wall -Wextra -Wno-return-type-c-linkage -Wno-deprecated-de
 set(CMAKE_CXX_FLAGS_DEBUG "-g")
 set(CMAKE_CXX_FLAGS_RELEASE "-O3")
 
-add_executable(openstint main.cpp frame.cpp transponder.cpp passing.cpp)
+add_executable(openstint main.cpp frame.cpp transponder.cpp passing.cpp counters.cpp)
 
 find_path(LIQUID_INCLUDE_DIR NAMES liquid/liquid.h)
 find_library(LIQUID_LIB REQUIRED NAMES liquid liquid-dsp)

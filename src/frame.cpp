@@ -26,8 +26,11 @@ Frame::Frame(TransponderType _ttype, uint64_t _ts, float preamble_energy)
     : transponder_type(_ttype), timestamp(_ts), evm_sum(0) {
     softbits.reserve(FRAME_MAX_SYMBOL_SPACE);
     payload_size = transponder_props(transponder_type).payload_size;
-    preamble_size = 16; // TODO
-    symbol_magnitude = std::sqrtf(preamble_energy) / std::sqrtf(2.0f); // RMS to amplitude
+    preamble_size = 16;
+    // note here: the preamble detector works with peak symbols, hence
+    // practically with peak-to-peak values. preamble_energy is amplitude^2
+    // for normalization post-symsync, we're better off with RMS, hence this transform
+    symbol_magnitude = std::sqrtf(preamble_energy) / std::sqrtf(2.0f); // amplitude^2 to RMS
 }
 
 uint32_t concat_bits32(uint8_t *soft_bits) {
@@ -87,13 +90,8 @@ const uint8_t* Frame::bits() {
 }
 
 float Frame::rssi() const {
-    // symbol_magnitude is average amplitude
-    // symbol_magnitude / SQRT(2) => RMS
-    // (symbol_magnitude / SQRT(2))^2 ~= power
-    // log(power) = log(symbol_magnitude / SQRT(2))^2) = 
-    // ... = 2.0*log(symbol_magnitude) - 2.0*log2(SQRT(2)) =
-    // ... = 2.0*log(symbol_magnitude) - 1.0
-    return 2.0f * std::log2f(symbol_magnitude) - 1.0f;
+    // symbol_magnitude is RMS amplitude => 2x
+    return 2.0f * std::log2f(symbol_magnitude);
 }
 
 float Frame::evm() const {
@@ -163,14 +161,14 @@ void FrameDetector::reset_statistics_counters() {
     n = 0;
 }
 
-float FrameDetector::symbol_energy2() const {
+float FrameDetector::symbol_energy() const {
     uint32_t wes[4] = { buffers[0].window_energy, buffers[1].window_energy, buffers[2].window_energy, buffers[3].window_energy }; 
     int idx = std::distance(wes, std::max_element(wes, wes+4)); // ~maxarg
 
     return static_cast<float>(buffers[idx].window_energy) / 16.0f;
 }
 
-float FrameDetector::noise_energy2() const {
+float FrameDetector::noise_energy() const {
     return variance2;
 }
 

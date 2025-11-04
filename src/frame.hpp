@@ -61,8 +61,8 @@ public:
     void update_statistics();
     void reset_statistics_counters();
 
-    float symbol_energy2() const;
-    float noise_energy2() const;
+    float symbol_energy() const;
+    float noise_energy() const;
     std::complex<int8_t> dc_offset() const;
 };
 

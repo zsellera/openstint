@@ -1,18 +1,31 @@
 #pragma once
 
 #include <cstdlib>
+#include <stdbool.h>
 
+#include <complex>
 #include <mutex>
-#include <map>
-#include <vector>
+#include <format>
+#include <string_view>
+#include <cmath>
 
-typedef std::map<int, int> RssiCounter;
+#include "frame.hpp"
 
 class RxStatistics {
-    std::map<uint64_t, RssiCounter> counters;
-    uint64_t timestep = 32;
-    uint64_t buckets = 16;
+    uint32_t frames_received = 0;
+    uint32_t frames_processed = 0;
+    std::complex<int8_t> dc_offset = {0, 0};
+    float noise_power = 0;
+    uint64_t last_reset_timestamp = 0;
+
+    std::mutex mutex;
 
 public:
-    void rx_event(uint64_t timestamp, float rssi);
-}
+    void register_frame(bool processed);
+    void save_channel_characteristics(std::complex<int8_t> dc_offset, float noise_power);
+
+    void reset(uint64_t current_timestamp);
+    bool reporting_due(uint64_t current_timestamp);
+    std::string to_string();
+};
+
