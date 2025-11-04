@@ -57,10 +57,10 @@ float median_rssi(const std::vector<Detection>& detections) {
 }
 
 Passing create_passing(TransponderKey transponder_key, const std::vector<Detection>& detections) {
-    Passing p {
+    Passing p = {
+        .timestamp = timestamp_at_max_rssi(detections),
         .transponder_type = transponder_key.first,
         .transponder_id = transponder_key.second,
-        .timestamp = timestamp_at_max_rssi(detections),
         .rssi = median_rssi(detections),
         .hits = detections.size()
     };
