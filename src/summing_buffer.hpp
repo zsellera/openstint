@@ -1,6 +1,6 @@
 #pragma once
 
-#include <string>
+#include <algorithm>
 
 template<unsigned int window_len, typename T>
 struct SummingBuffer {
@@ -9,8 +9,8 @@ struct SummingBuffer {
     int tail = 0;
 
     void reset() {
-        std::memset(buffer, 0, sizeof(buffer));
-        std::memset(&sum, 0, sizeof(sum));
+        std::fill(buffer, buffer + window_len, T {});
+        sum = {0};
         tail = 0;
     }
 

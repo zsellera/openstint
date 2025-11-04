@@ -167,14 +167,14 @@ int main(int argc, char** argv) {
         if (arg == "-l" && i + 1 < argc) {
             lna_gain = std::atoi(argv[++i]);
             lna_gain = (lna_gain / 8) * 8; // steps of 8
-            if (lna_gain < 0 || lna_gain > 40) {
+            if (lna_gain > 40) {
                 std::cerr << "Error: LNA gain must be between 0 and 40.\n";
                 return 1;
             }
         } else if (arg == "-v" && i + 1 < argc) {
             vga_gain = std::atoi(argv[++i]);
             vga_gain = (vga_gain / 2) * 2; // steps of 2
-            if (vga_gain < 0 || vga_gain > 62) {
+            if (vga_gain > 62) {
                 std::cerr << "Error: VGA gain must be between 0 and 62.\n";
                 return 1;
             }
@@ -208,6 +208,7 @@ int main(int argc, char** argv) {
     zmq::context_t context(1);
     zmq::socket_t publisher(context, zmq::socket_type::pub);
     publisher.bind(zmq_address);
+    std::cout << "Listening on " << zmq_address << std::endl;
 
     std::cout << "HackRF RX: freq=" << freq_hz << " Hz, sample_rate=" << sample_rate
               << " Hz, LNA=" << (int)lna_gain << ", VGA=" << (int)vga_gain << "\n";
