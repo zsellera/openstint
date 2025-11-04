@@ -22,6 +22,8 @@ make
 ```
 Vehicle passings are printed to `stdout` and published with ZeroMQ at `:5556`. The easiest method for testing with real transponders is with a *near-field magnetic probe* (sub-$10 stuff, search on ebay/aliexpress or see [Dave Jones DIY one](https://youtu.be/2xy3Hm1_ZqI?si=vmh87UB20cV0W4xt)).
 
+To use goodies in the `integrations/` directory, `sudo apt-get install python3 python3-zmq` as well.
+
 Note on Mac: we can't `brew install libfec`, compile and install it [from source](https://github.com/fblomqvi/libfec).
 
 If this is your first rodeo, `sudo apt-get install cmake build-essentials libtool autoconf` as well.
