@@ -42,8 +42,9 @@ static const uint32_t SAMPLE_RATE          = 5000000;
 static const uint32_t SYMBOL_RATE          = 1250000;
 static const uint32_t BB_FILTER_BW         = 1750000;
 static const uint32_t SAMPLES_PER_SYMBOL   = SAMPLE_RATE / SYMBOL_RATE;
-static const uint8_t DEFAULT_LNA_GAIN      = 32;           // 0-40 in steps of 8 or so; experiment
+static const uint8_t DEFAULT_LNA_GAIN      = 24;           // 0-40 in steps of 8 or so; experiment
 static const uint8_t DEFAULT_VGA_GAIN      = 24;           // 0-62
+static const int DEFAULT_ZEROMQ_PORT       = 5556;
 
 static enum FrameParseMode { FRAME_SEEK, FRAME_FOUND } frame_parse_mode = FRAME_SEEK;
 static FrameDetector frame_detector(0.9f);
@@ -153,15 +154,60 @@ int main(int argc, char** argv) {
     const uint64_t freq_hz = CENTER_FREQ_HZ;
     const uint32_t sample_rate = SAMPLE_RATE;
     const uint32_t filter_bw = BB_FILTER_BW;
-    const uint8_t lna_gain = DEFAULT_LNA_GAIN;
-    const uint8_t vga_gain = DEFAULT_VGA_GAIN;
+    uint8_t lna_gain = DEFAULT_LNA_GAIN;
+    uint8_t vga_gain = DEFAULT_VGA_GAIN;
+    bool bias_tee = false;
+    bool amp_enable = false; // hackrf has a custom, +13 dB preamp
+    int zmq_port = DEFAULT_ZEROMQ_PORT;
 
+    // process command line arguments
+    for (int i = 1; i < argc; ++i) {
+        std::string arg = argv[i];
+
+        if (arg == "-l" && i + 1 < argc) {
+            lna_gain = std::atoi(argv[++i]);
+            lna_gain = (lna_gain / 8) * 8; // steps of 8
+            if (lna_gain < 0 || lna_gain > 40) {
+                std::cerr << "Error: LNA gain must be between 0 and 40.\n";
+                return 1;
+            }
+        } else if (arg == "-v" && i + 1 < argc) {
+            vga_gain = std::atoi(argv[++i]);
+            vga_gain = (vga_gain / 2) * 2; // steps of 2
+            if (vga_gain < 0 || vga_gain > 62) {
+                std::cerr << "Error: VGA gain must be between 0 and 62.\n";
+                return 1;
+            }
+        } else if (arg == "-b") {
+            bias_tee = true;
+        } else if (arg == "-a") {
+            amp_enable = true;
+        } else if (arg == "-p" && i + 1 < argc) {
+            zmq_port = std::atoi(argv[++i]);
+        } else {
+            if (arg != "-h") {
+                std::cerr << "Unknown argument: " << arg << "\n";
+            }
+            std::cerr << "Usage: " << argv[0] << " [-p tcp_port] [-l <0..40>] [-v <0..62>] [-a] [-b]\n";
+            std::cerr << "\t-p port     default:" << DEFAULT_ZEROMQ_PORT << "\tZeroMQ publisher port\n";
+            std::cerr << "\t-l <0..40>  default:" << static_cast<int>(DEFAULT_LNA_GAIN) << "  \tLNA gain (rf signal amplifier; valid values: 0/8/16/24/32/40)\n";
+            std::cerr << "\t-v <0..62>  default:" << static_cast<int>(DEFAULT_LNA_GAIN) << "  \tVGA gain (baseband signal amplifier, steps of 2)\n";
+            std::cerr << "\t-a          default:off \tEnable preamp (+13 dB to input RF signal)\n";
+            std::cerr << "\t-b          default:off \tEnable bias-tee (+3.3 V, 50 mA max)\n";
+            
+            return 1;
+        }
+    }
+
+    // transponder processing (allocate viterbi trellis); TODO RAII
     init_transponders();
 
     //  Prepare our context and publisher
+    std::string zmq_address;
+    std::format_to(std::back_inserter(zmq_address), "tcp://*:{}", zmq_port);
     zmq::context_t context(1);
     zmq::socket_t publisher(context, zmq::socket_type::pub);
-    publisher.bind("tcp://*:5556");
+    publisher.bind(zmq_address);
 
     std::cout << "HackRF RX: freq=" << freq_hz << " Hz, sample_rate=" << sample_rate
               << " Hz, LNA=" << (int)lna_gain << ", VGA=" << (int)vga_gain << "\n";
@@ -206,20 +252,29 @@ int main(int argc, char** argv) {
         goto cleanup;
     }
 
-    // set LNA and VGA gains (optional)
+    // set LNA gain
     result = hackrf_set_lna_gain(device, lna_gain);
     if (result != HACKRF_SUCCESS) {
         std::fprintf(stderr, "hackrf_set_lna_gain() failed: %s (%d)\n", hackrf_error_name(static_cast<enum hackrf_error>(result)), result);
-        // not fatal; continue
     }
+
+    // set VGA gain
     result = hackrf_set_vga_gain(device, vga_gain);
     if (result != HACKRF_SUCCESS) {
         std::fprintf(stderr, "hackrf_set_vga_gain() failed: %s (%d)\n", hackrf_error_name(static_cast<enum hackrf_error>(result)), result);
-        // not fatal; continue
     }
 
-    // (Optional) enable amplified antenna path (if you have an amplifier on board)
-    // hackrf_set_amp_enable(device, 0);
+    // (Optional) enable amplified antenna
+    hackrf_set_amp_enable(device, amp_enable ? 1 : 0);
+    if (result != HACKRF_SUCCESS) {
+		std::fprintf(stderr, "hackrf_set_amp_enable() failed: %s (%d)\n", hackrf_error_name(static_cast<enum hackrf_error>(result)), result);
+    }
+
+    // (Optional) enable bias-tee
+    result = hackrf_set_antenna_enable(device, bias_tee ? 1 : 0);
+    if (result != HACKRF_SUCCESS) {
+		std::fprintf(stderr, "hackrf_set_antenna_enable() failed: %s (%d)\n", hackrf_error_name(static_cast<enum hackrf_error>(result)), result);
+    }
 
     // start receiving (callback provides raw interleaved I/Q samples)
     result = hackrf_start_rx(device, rx_callback, nullptr);
