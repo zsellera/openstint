@@ -91,16 +91,21 @@ Possible future extensions:
 
 Structure:
 ```
-S <noise power> <in-phase DC offset> <quadrature-phase DC offset> [other future parameters]
+S <decoder_timestamp:uint64> <noise_power:float> <dc_offset_magnitude:uint8> <frames_received> <frames_processed> [other future parameters]
 ```
 
 Example:
 ```
-S 0.984 -3.8 4.1
+S 1792039754 1.018744 5 0 0
+S 1792040804 1.2333267 5 77 52
+S 1792041851 0.9898376 5 184 135
+S 1792042901 1.0032545 5 0 0
 ```
 
-* `noise power` is the average received signal level when no transponder messages are received. It is expressed as "log2(avg. static magnitude)". As it is log-scale, you can get the signal-to-noise ratio as `SNR = RSSI-NOISE`.
-* DC-offset is radio-dependent, and usually caused by phase-imbalance in the mixer stages. Post-mixer amplifiers (hackrf: VGA) amplifiy it. If the magnitude (`sqrt(i * i + q * q)`) is larger than ~10.0, consider decreasing the VGA gain of the radio.
+* `decoder_timestamp` is the same monotoic clock as used in other messages
+* `noise_power` is the average received signal level when no transponder messages are received. It is expressed in log<sub>2</sub> scale, just like the RSSI values. As it is log-scale, you can get the signal-to-noise ratio as `SNR = RSSI-NOISE`.
+* The `dc_offset_magnitude` is the absolute value of the DC-offset. It is radio-dependent error, and usually caused by phase-imbalance in the mixer stages. Post-mixer amplifiers (hackrf: VGA) amplifiy it. If the magnitude is larger than ~10.0, consider decreasing the VGA gain of the radio.
+* `frames_received` and `frames_processed` count the total and successfully processed transponder transmissions in the given reporting period. A large difference indicates a bad signal-to-noise environment or high inter-symbol interfecence (caused by bad LC-tuning). If you're experimenting with your own transponders, this is a good metric to track while tuning the capacitors of the "antenna loop".
 
 Possible future extensions:
 * Low-bin (ie. 64) FFT on the received signal. It would help setting up preamps and amplifiers gains.

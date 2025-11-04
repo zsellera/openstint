@@ -31,6 +31,7 @@
 #include "transponder.hpp"
 #include "frame.hpp"
 #include "passing.hpp"
+#include "counters.hpp"
 
 
 static hackrf_device* device = nullptr;
@@ -50,6 +51,7 @@ static SymbolReader symbol_reader;
 static Frame frame;
 
 static PassingDetector passing_detector;
+static RxStatistics rx_stats;
 
 // signal handler to break the capture loop
 void signal_handler(int signum) {
@@ -57,12 +59,12 @@ void signal_handler(int signum) {
     do_exit = true;
 }
 
-void process_frame(Frame* frame) {
+bool process_frame(Frame* frame) {
     // std::cout << "\n\nframe " << *frame << std::endl;
     const uint8_t *softbits = frame->bits();
     if (!softbits) {
         // preamble not found
-        return;
+        return false;
     }
 
     uint32_t transponder_id;
@@ -76,6 +78,7 @@ void process_frame(Frame* frame) {
                 passing_detector.timesync(frame->timestamp, transponder_timestamp);
                 std::cout << "TIMESYNC " << transponder_timestamp << std::endl;
             }
+            return true;
         }
         break;
         case TransponderType::Legacy:
@@ -83,9 +86,11 @@ void process_frame(Frame* frame) {
                 if (transponder_id < 10000000) {
                     passing_detector.append(frame->timestamp, TransponderType::Legacy, transponder_id, frame->rssi());
                 }
+                return true;
             }
         break;
     }
+    return false;
 }
 
 // hackrf callback invoked for each block of data
@@ -109,14 +114,15 @@ extern "C" int rx_callback(hackrf_transfer* transfer) {
                 frame_parse_mode = FRAME_FOUND;
                 frame_detected = true; // do not use this buffer for noisefloor calculation
                 uint64_t timestamp = buffer_timestamp + (1000 * idx) / SAMPLE_RATE;
-                frame = Frame(detected.value(), timestamp, frame_detector.symbol_energy2());
+                frame = Frame(detected.value(), timestamp, frame_detector.symbol_energy());
                 symbol_reader.read_preamble(&frame, frame_detector.dc_offset(), samples, idx+4);
             }
         } else if (frame_parse_mode == FRAME_FOUND) {
             symbol_reader.read_symbol(&frame, frame_detector.dc_offset(), samples+idx);
             if (symbol_reader.is_frame_complete(&frame)) {
                 frame_parse_mode = FRAME_SEEK;
-                process_frame(&frame);
+                bool frame_processed = process_frame(&frame);
+                rx_stats.register_frame(frame_processed);
             }
         }
     }
@@ -134,6 +140,7 @@ extern "C" int rx_callback(hackrf_transfer* transfer) {
         frame_detector.reset_statistics_counters();
     } else {
         frame_detector.update_statistics();
+        rx_stats.save_channel_characteristics(frame_detector.dc_offset(), frame_detector.noise_energy());
     }
 
     // Returning 0 indicates "keep going".
@@ -230,6 +237,15 @@ int main(int argc, char** argv) {
         const auto now = std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now().time_since_epoch()
         ).count();
+
+        // report status once a second
+        if (rx_stats.reporting_due(now)) {
+            const std::string report = std::format("S {} {}", now, rx_stats.to_string());
+            rx_stats.reset(now);
+
+            std::cout << report << std::endl;
+            publisher.send(zmq::buffer(report), zmq::send_flags::none);
+        }
         
         std::vector<TimeSync> timesyncs = passing_detector.identify_timesyncs(500ul);
         for (const auto& time_sync : timesyncs) {
@@ -239,7 +255,9 @@ int main(int argc, char** argv) {
                 time_sync.transponder_id,
                 time_sync.transponder_timestamp
             );
+
             std::cout << report << std::endl;
+            publisher.send(zmq::buffer(report), zmq::send_flags::none);
         }
 
         std::vector<Passing> passings = passing_detector.identify_passings(now - 250ul);
@@ -255,7 +273,6 @@ int main(int argc, char** argv) {
             std::cout << report << std::endl;
             publisher.send(zmq::buffer(report), zmq::send_flags::none);
         }
-        // std::cout << "." << std::flush;
     }
 
     // stop RX
