@@ -54,6 +54,10 @@ static Frame frame;
 static PassingDetector passing_detector;
 static RxStatistics rx_stats;
 
+static const uint64_t startup_ts = std::chrono::duration_cast<std::chrono::milliseconds>(
+    std::chrono::steady_clock::now().time_since_epoch()
+).count();
+
 // signal handler to break the capture loop
 void signal_handler(int signum) {
     std::cerr << "\nCaught signal " << signum << " — stopping...\n";
@@ -102,7 +106,7 @@ extern "C" int rx_callback(hackrf_transfer* transfer) {
 
     uint64_t buffer_timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(
         std::chrono::steady_clock::now().time_since_epoch()
-    ).count();
+    ).count() - startup_ts;
 
     uint32_t sample_count = transfer->valid_length / 2;
     const std::complex<int8_t> *samples = reinterpret_cast<const std::complex<int8_t>*>(transfer->buffer);
@@ -292,7 +296,7 @@ int main(int argc, char** argv) {
         
         const auto now = std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now().time_since_epoch()
-        ).count();
+        ).count() - startup_ts;
 
         // report status once a second
         if (rx_stats.reporting_due(now)) {
