@@ -8,13 +8,9 @@
 #define REPORT_HIT_LIMIT 2
 #define TRANSPONDER_DETECTION_MSG_LIMIT (1<<12)
 
-void PassingDetector::append(uint64_t timestamp,
-                             TransponderType transponder_type,
-                             uint32_t transponder_id, 
-                             float rssi)
-{
-    TransponderKey transponder_key = std::make_pair(transponder_type, transponder_id);
-    Detection d(timestamp, rssi);
+void PassingDetector::append(const Frame* frame, uint32_t transponder_id) {
+    TransponderKey transponder_key = std::make_pair(frame->transponder_type, transponder_id);
+    Detection d(frame->timestamp, frame->rssi(), frame->evm());
     
     std::lock_guard<std::mutex> lock(mutex);
 
@@ -28,13 +24,13 @@ void PassingDetector::append(uint64_t timestamp,
     }
 }
 
-void PassingDetector::timesync(uint64_t timestamp, uint32_t transponder_timestamp) {
-    TimeSyncMsg ts(timestamp, transponder_timestamp);
+void PassingDetector::timesync(const Frame* frame, uint32_t transponder_timestamp) {
+    TimeSyncMsg ts(frame->timestamp, transponder_timestamp);
     std::lock_guard<std::mutex> lock(mutex);
     timesync_messages.push_back(std::move(ts));
 }
 
-uint64_t timestamp_at_max_rssi(const std::vector<Detection>& detections) {
+const Detection* detection_at_max_rssi(const std::vector<Detection>& detections) {
     const auto it = std::max_element(
         detections.begin(),
         detections.end(),
@@ -42,27 +38,18 @@ uint64_t timestamp_at_max_rssi(const std::vector<Detection>& detections) {
             return a.rssi < b.rssi;
         });
 
-    return it->timestamp;
-}
-
-float median_rssi(const std::vector<Detection>& detections) {
-    std::vector<float> rssi_values;
-    rssi_values.reserve(detections.size());
-    for (const auto& d : detections)
-        rssi_values.push_back(d.rssi);
-    
-    const size_t mid = rssi_values.size() / 2;
-    std::nth_element(rssi_values.begin(), rssi_values.begin() + mid, rssi_values.end());
-    return rssi_values[mid];
+    return &(*it);
 }
 
 Passing create_passing(TransponderKey transponder_key, const std::vector<Detection>& detections) {
+    const Detection* d = detection_at_max_rssi(detections);
     Passing p = {
-        .timestamp = timestamp_at_max_rssi(detections),
+        .timestamp = d->timestamp,
         .transponder_type = transponder_key.first,
         .transponder_id = transponder_key.second,
-        .rssi = median_rssi(detections),
-        .hits = detections.size()
+        .rssi = d->rssi,
+        .hits = detections.size(),
+        .evm = d->evm
     };
     return p;
 }

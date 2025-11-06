@@ -181,7 +181,7 @@ SymbolReader::SymbolReader() {
         LIQUID_FIRFILT_RRC,
         samples_per_symbol,
         filter_delay, // filter length (delay!)
-        0.3f, // filter excess bandwidth
+        0.5f, // filter excess bandwidth
         16 // number of polyphase filters in bank
     );
     bpsk_modem = modemcf_create(LIQUID_MODEM_BPSK);

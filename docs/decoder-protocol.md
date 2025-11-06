@@ -42,27 +42,27 @@ msg_type, timecode, transponder_type, transponder_id, rssi, hit_count = msg.spli
 
 Structure:
 ```
-P <decoder_timestamp:uint64> <transponder_type:string> <transponder_id:uint32_t> <rssi:float> <hit_count:uint32_t> [other future parameters]
+P <decoder_timestamp:uint64> <transponder_type:string> <transponder_id:uint32_t> <rssi:float> <hit_count:uint32_t> <evm:float> [other future parameters]
 ```
 
 Example:
 ```
-P 1618706341 OPN 1615544 3.50 64
-P 1618714251 OPN 1615544 3.08 40
-P 1658197240 AMB 3616557 3.88 21
-P 1658197696 AMB 3616557 4.24 30
+P 1618706341 OPN 1615544 3.50 64 0.30
+P 1618714251 OPN 1615544 3.08 40 0.25
+P 1658197240 AMB 3616557 3.88 21 0.29
+P 1658197696 AMB 3616557 4.24 30 0.34
 ```
 
 * `decoder_timestamp` is a milliseconds-resolution [steady clock](https://en.cppreference.com/w/cpp/chrono/steady_clock.html) epoch. As such, it is insensitive to updates to system time (NTP syncs). Also the value does not necessary reflect the system time or any unix epoch. The value of this counter is totally different between processes and machines, even if the machines are PTP-synced to an atomic clock or to a GPS. Treat it as a monotonic counter.
 * `transponder_type` defines if the passing is from an OpenStint (`OPN`) or legacy/RC3 transponder (`AMB`). The [OpenStint transponder protocol](transponder-protocol.md) is an error-corrected, highly sensitive, well-documented transponder protocol, and it is the preferred protocol of this project. The legacy/RC3 is there to provide backwards-compatibility with existing transponders (MyLaps/MRT/Vostok/etc.). RC4 support is not actively pursued.
 * `transponder_id` is a non-negative number. Both OpenStint and AMB/RC3 defines it as "up to 7 digits", but future transponder options might increase it's width. With OpenStint transponders, even single-digit (ie. `0`) transponder ids are possible.
-* `RSSI` is the median "**R**elative **S**ignal **S**trenght **I**ndicator. Relative means it is relative to the least significant digit of the ADC in the radio. It is calculated as "log<sub>2</sub>(average symbol power)". As such, the value `0.0` means only the last bit encodes the information. While it is noise-dependent, based on testing, reliable reception is possible at RSSI=1.9, meaning the received baseband samples are between -2..+2 (`±SQRT(2 ^ 1.9)`). The 8-bit ADC range is ±127. Reception above RSSI=12.5 (ca. ±100) is typically not reliable due to clipping.
+* `RSSI` is the maximum "**R**elative **S**ignal **S**trenght **I**ndicator. Relative means it is relative to the least significant digit of the ADC in the radio. It is calculated as "log<sub>2</sub>(average symbol power)". As such, the value `0.0` means only the last bit encodes the information. While it is noise-dependent, based on testing, reliable reception is possible at RSSI=1.9, meaning the received baseband samples are between -2..+2 (`±SQRT(2 ^ 1.9)`). The 8-bit ADC range is ±127. Reception above RSSI=12.5 (ca. ±100) is typically not reliable due to clipping.
 * `hit_count` tells about the number of successfully decoded tranponder messages during the passing. OpenStint transponders should transmit a message on average every 1.5 ms. RC4-hybrid transponders send at a similar rate, but only every ~4th is an RC3 message (which is the supported message format).
+* `evm` is Error Vector Magnitude; it's a measure of demodulation efficiency. If you build custom transponders, and this value is unusally high, the transponder is probably mis-tuned.
 
 Possible future extensions:
 
 * Passing speed detection
-* [EVM figure](https://liquidsdr.org/doc/modem/#evm) to aid transponder's LC-tuning
 
 ### Time Syncronization ("T")
 
