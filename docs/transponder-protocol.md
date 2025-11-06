@@ -21,6 +21,8 @@ The frames are typically 104 bits of length. As such, the transmission duration 
 
 Assuming a 30 cm wide detection window, a car at v=10 m/s spends 30 ms in the detection window. On average 20 transponder transmissions are happening during this timeframe, which is more than enough for a passing detection.
 
+The frames must align to the carrier wave (symbols should be 0/180 degrees to the carrier wave).
+
 Note: OpenStint protocol does not employ differential-encoding before transmission. While it makes bit syncronization harder, differential-encoding can cause double bit errors on the receiver side, making successful error correction less likely.
 
 ## Framing
