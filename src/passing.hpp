@@ -8,13 +8,15 @@
 #include <utility>
 
 #include "transponder.hpp"
+#include "frame.hpp"
 
 
 struct Detection {
     uint64_t timestamp;
     float rssi;
+    float evm;
 
-    Detection(uint64_t _ts, float _rssi) : timestamp(_ts), rssi(_rssi) {};
+    Detection(uint64_t _ts, float _rssi, float _evm) : timestamp(_ts), rssi(_rssi), evm(_evm) {};
 };
 
 struct TimeSyncMsg {
@@ -30,6 +32,7 @@ struct Passing {
     uint32_t transponder_id;
     float rssi;
     size_t hits;
+    float evm;
 };
 
 struct TimeSync {
@@ -47,8 +50,8 @@ class PassingDetector {
     std::mutex mutex;
 
 public:
-    void append(uint64_t timestamp, TransponderType transponder_type, uint32_t transponder_id, float rssi);
-    void timesync(uint64_t timestamp, uint32_t transponder_timestamp);
+    void append(const Frame* frame, uint32_t transponder_id);
+    void timesync(const Frame* frame, uint32_t transponder_timestamp);
     std::vector<TimeSync> identify_timesyncs(uint64_t margin);
     std::vector<Passing> identify_passings(uint64_t deadline);
 };

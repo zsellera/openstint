@@ -73,10 +73,10 @@ bool process_frame(Frame* frame) {
         case TransponderType::OpenStint:
         if (decode_openstint(softbits, &transponder_id)) {
             if (transponder_id < 10000000u) {
-                passing_detector.append(frame->timestamp, TransponderType::OpenStint, transponder_id, frame->rssi());
+                passing_detector.append(frame, transponder_id);
             } else if ((transponder_id & 0x00A00000) == 0x00A00000) {
                 uint32_t transponder_timestamp = (transponder_id & 0x000FFFFF);
-                passing_detector.timesync(frame->timestamp, transponder_timestamp);
+                passing_detector.timesync(frame, transponder_timestamp);
                 std::cout << "TIMESYNC " << transponder_timestamp << std::endl;
             }
             return true;
@@ -85,7 +85,7 @@ bool process_frame(Frame* frame) {
         case TransponderType::Legacy:
             if (decode_legacy(softbits, &transponder_id)) {
                 if (transponder_id < 10000000) {
-                    passing_detector.append(frame->timestamp, TransponderType::Legacy, transponder_id, frame->rssi());
+                    passing_detector.append(frame, transponder_id);
                 }
                 return true;
             }
@@ -318,12 +318,13 @@ int main(int argc, char** argv) {
 
         std::vector<Passing> passings = passing_detector.identify_passings(now - 250ul);
         for (const auto& passing : passings) {
-            const std::string report = std::format("P {} {} {} {:.2f} {}",
+            const std::string report = std::format("P {} {} {} {:.2f} {} {:.2f}",
                 passing.timestamp,
                 transponder_props(passing.transponder_type).prefix,
                 passing.transponder_id,
                 passing.rssi,
-                passing.hits
+                passing.hits,
+                passing.evm
             );
 
             std::cout << report << std::endl;
