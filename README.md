@@ -40,7 +40,7 @@ Find some built-in integrations in the `integrations/` directory. Two notable ar
 
 ```
 openstint -h
-Usage: build/src/openstint [-p tcp_port] [-l <0..40>] [-v <0..62>] [-a] [-b]
+Usage: openstint [-p tcp_port] [-l <0..40>] [-v <0..62>] [-a] [-b]
 	-p port     default:5556	ZeroMQ publisher port
 	-l <0..40>  default:24  	LNA gain (rf signal amplifier; valid values: 0/8/16/24/32/40)
 	-v <0..62>  default:24  	VGA gain (baseband signal amplifier, steps of 2)
@@ -54,6 +54,14 @@ Usage: build/src/openstint [-p tcp_port] [-l <0..40>] [-v <0..62>] [-a] [-b]
 * RTL-SDR support (inexpensive software defined radio)
 * Reference OpenStint transponder (PCB + gerbers/pos/bom + code)
 * Adaptive equalization to decrease EVM
-* Command-and-control interface and tooling
 
-**RC4 support is not actively pursued.** There are already multiple open-source transponder projects out there. One can order an assembled 2x10pcs OpenStint-compatible panel from JLCPCB for less than $100, including taxes and shipping. For a cost of a single brand-name transponder, a whole club can enjoy reliable laptiming. Then why bother decyphering a protocol which was designed to be and remain closed?!?
+**RC4 support is not pursued.** There are already multiple open-source transponder projects out there. One can order an assembled 2x10pcs OpenStint-compatible panel from JLCPCB for less than $100, including taxes and shipping. For a cost of a single brand-name transponder, a whole club can enjoy reliable laptiming. Then why bother decyphering a protocol which was designed to be and to remain closed?!?
+
+## Contribution
+
+Please submit PRs according to the project's core values:
+* it should be and remain a solution for small-scale clubs and friendly gatherings
+* it should run on constrained hardware (Raspberry Pi Model 3b+)
+* the interfaces should be simple and well documented (to promote 3rd-party integration)
+* "does one thing and one thing well" phylosophy
+Otherwise, I'll try to adhere myself to the [C4 community process](https://hintjens.gitbooks.io/social-architecture/content/chapter4.html).
