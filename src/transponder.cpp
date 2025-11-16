@@ -85,16 +85,23 @@ int decode_legacy(const uint8_t *softbits, uint32_t *transponder_id) {
     // To get the pre-encoded message, reverse the binary word and break into 
     // chunks of 3. You'll end up with 24/3=8 chunks:
     // 111 000 010 110 101 101 001 000
-    // Suffix each chunk with a bit from a "scrambler_byte", in my transponder, it was 00000101
+    // Suffix each chunk with a bit from a "status code", in my transponder, it was 00000101
     // 1110 0000 0100 1100 1010 1011 0010 0001
     uint32_t tid = 0; // transponder_id
+    uint8_t status = 0; // status code
     for (int i=0; i<32; i++) {
-        if (i % 4 != 0) { // skip every 4th scrambling bit
-            uint32_t bitmask = (1 << i);
-            uint32_t bit = (message & bitmask) ? 1 : 0;
+        uint32_t bitmask = (1 << i);
+        uint32_t bit = (message & bitmask) ? 1 : 0;
+
+        if (i % 4 != 0) { // every 4th is status bit
             tid = (tid << 1) | bit;
+        } else {
+            status = (status << 1) | bit;
         }
     }
     *transponder_id = tid;
-    return (trail == 0);
+
+    // the last byte must be zero (error check)
+    // status messages have the lowest 3 bits non-zero
+    return (trail == 0) && ((status & 0x07)  == 0);
 }

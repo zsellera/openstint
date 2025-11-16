@@ -81,14 +81,13 @@ bool process_frame(Frame* frame) {
             } else if ((transponder_id & 0x00A00000) == 0x00A00000) {
                 uint32_t transponder_timestamp = (transponder_id & 0x000FFFFF);
                 passing_detector.timesync(frame, transponder_timestamp);
-                std::cout << "TIMESYNC " << transponder_timestamp << std::endl;
             }
             return true;
         }
         break;
         case TransponderType::Legacy:
             if (decode_legacy(softbits, &transponder_id)) {
-                if (transponder_id < 10000000) {
+                if (transponder_id < 10000000) { // extra check (7-digit max)
                     passing_detector.append(frame, transponder_id);
                 }
                 return true;
