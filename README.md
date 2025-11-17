@@ -2,7 +2,9 @@
 
 <img src="docs/logo.svg" alt="OpenStint logo" width="200"/>
 
-OpenSint is a software defined radio (SDR) based laptiming decoder, currently implemented with HackRF One. It works both with its own [transponder protocol](docs/transponder-protocol.md) and with AMB/RC3-based transponders. It can run on a Raspberry Pi 3b. Only a minimal electronics knowledge is required; touching a soldering iron is optional.
+OpenStint is a software defined radio (SDR) based laptiming decoder, currently implemented with HackRF One software defined radio. It works both with its own [transponder protocol](docs/transponder-protocol.md) and with AMB/RC3-based transponders. It can run on a Raspberry Pi 3 Model B+. Only a minimal electronics knowledge is required; touching a soldering iron is optional.
+
+Side-projects: [openstint transponder](https://github.com/zsellera/openstint-transponder) | [antenna preamplifier](https://github.com/zsellera/openstint-transponder)
 
 To learn more how SDR works, watch [Andreas Spiess](https://www.youtube.com/watch?v=xQVm-YTKR9s) explaining it.
 
@@ -52,16 +54,17 @@ Usage: openstint [-p tcp_port] [-l <0..40>] [-v <0..62>] [-a] [-b]
 
 * Increase compatibilty with existing software by implementing an OpenStint-P3 bridge
 * RTL-SDR support (inexpensive software defined radio)
-* Reference OpenStint transponder (PCB + gerbers/pos/bom + code)
 * Adaptive equalization to decrease EVM
 
 **RC4 support is not pursued.** There are already multiple open-source transponder projects out there. One can order an assembled 2x10pcs OpenStint-compatible panel from JLCPCB for less than $100, including taxes and shipping. For a cost of a single brand-name transponder, a whole club can enjoy reliable laptiming. Then why bother decyphering a protocol which was designed to be and to remain closed?!?
 
 ## Contribution
 
-Please submit PRs according to the project's core values:
+Submit PRs according to the project's core values:
+
 * it should be and remain a solution for small-scale clubs and friendly gatherings
-* it should run on constrained hardware (Raspberry Pi Model 3b+)
+* it should run on constrained hardware (Raspberry Pi 3 Model B+)
 * the interfaces should be simple and well documented (to promote 3rd-party integration)
 * "does one thing and one thing well" phylosophy
-Otherwise, I'll try to adhere myself to the [C4 community process](https://hintjens.gitbooks.io/social-architecture/content/chapter4.html).
+
+Otherwise, I'll to adhere myself to the [C4 community process](https://hintjens.gitbooks.io/social-architecture/content/chapter4.html).
