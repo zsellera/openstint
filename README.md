@@ -42,7 +42,8 @@ Find some built-in integrations in the `integrations/` directory. Two notable ar
 
 ```
 openstint -h
-Usage: openstint [-p tcp_port] [-l <0..40>] [-v <0..62>] [-a] [-b]
+Usage: openstint [-d ser_nr] [-p tcp_port] [-l <0..40>] [-v <0..62>] [-a] [-b] [-m]
+	-d ser_nr   default:first   serial number of the desired HackRF
 	-p port     default:5556	ZeroMQ publisher port
 	-l <0..40>  default:24  	LNA gain (rf signal amplifier; valid values: 0/8/16/24/32/40)
 	-v <0..62>  default:24  	VGA gain (baseband signal amplifier, steps of 2)
