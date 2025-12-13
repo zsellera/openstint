@@ -48,6 +48,7 @@ Usage: openstint [-p tcp_port] [-l <0..40>] [-v <0..62>] [-a] [-b]
 	-v <0..62>  default:24  	VGA gain (baseband signal amplifier, steps of 2)
 	-a          default:off 	Enable preamp (+13 dB to input RF signal)
 	-b          default:off 	Enable bias-tee (+3.3 V, 50 mA max)
+	-m          default:off 	Enable monitor mode (print received frames to stdout)
 ```
 
 ## Future plans (some sort of a roadmap)
