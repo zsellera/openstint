@@ -32,8 +32,14 @@ void RxStatistics::reset(uint64_t current_timestamp) {
 std::string RxStatistics::to_string() {
     std::lock_guard<std::mutex> lock(mutex);
 
+    // there is a minor trickery here: noise power is calculated from sample variance (sigma-squared),
+    // while ADC_FULL_SCALE represents a voltage. As such,
+    // rssi = 10*log(Psig/Pmax)
+    //      = 10*log(Psig) - 10*log(Pmax)
+    //      = 10*log(Psig) - 20*log(Vmax)
+    float noise_floor = 10.0f * std::log10f(noise_power) - 20.0 * std::log10f(ADC_FULL_SCALE);
+    
     std::string temp;
-    float noise_floor = std::log2f(noise_power);
     std::format_to(
         std::back_inserter(temp), "{} {} {} {}", 
         noise_floor, 
