@@ -14,6 +14,8 @@
 
 #include <liquid/liquid.h>
 
+#define ADC_FULL_SCALE 127.0f
+
 struct Frame {
     TransponderType transponder_type; // what kind of preamble was matched
     uint32_t preamble_size;
@@ -48,7 +50,7 @@ class FrameDetector {
 
     // stream statistics:
     std::complex<int8_t> offset= {0, 0}; // dc offset ~ sample mean
-    float variance2 = 0; // ~noise power
+    float variance = 0; // ~noise power (expected value squared after dc offset removal)
     
     // statistic calculation:
     std::complex<int32_t> s1 = {0, 0}; // sum of samples

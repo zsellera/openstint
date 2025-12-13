@@ -90,8 +90,8 @@ const uint8_t* Frame::bits() {
 }
 
 float Frame::rssi() const {
-    // symbol_magnitude is RMS amplitude => 2x
-    return 2.0f * std::log2f(symbol_magnitude);
+    // symbol_magnitude is in RMS
+    return 20.0f * std::log10f(symbol_magnitude / ADC_FULL_SCALE);
 }
 
 float Frame::evm() const {
@@ -150,7 +150,7 @@ std::optional<TransponderType> FrameDetector::process_baseband(const std::comple
 void FrameDetector::update_statistics() {
     if (n > STATS_UPDATE_THRESHOLD) {
         offset = complex_cast<int8_t>(s1 / n);
-        variance2 = static_cast<float>(s2) / (n - 1); // sample's variance
+        variance = static_cast<float>(s2) / (n - 1); // sample's variance (vs population variance)
         reset_statistics_counters();
     }
 }
@@ -169,7 +169,7 @@ float FrameDetector::symbol_energy() const {
 }
 
 float FrameDetector::noise_energy() const {
-    return variance2;
+    return variance;
 }
 
 std::complex<int8_t> FrameDetector::dc_offset() const {
