@@ -166,12 +166,15 @@ int main(int argc, char** argv) {
     bool bias_tee = false;
     bool amp_enable = false; // hackrf has a custom, +13 dB preamp
     int zmq_port = DEFAULT_ZEROMQ_PORT;
+    const char* hackrf_serial = nullptr;
 
     // process command line arguments
     for (int i = 1; i < argc; ++i) {
         std::string arg = argv[i];
 
-        if (arg == "-l" && i + 1 < argc) {
+        if (arg == "-d" && i + 1 < argc) {
+            hackrf_serial = argv[++i];
+        } else if (arg == "-l" && i + 1 < argc) {
             lna_gain = std::atoi(argv[++i]);
             lna_gain = (lna_gain / 8) * 8; // steps of 8
             if (lna_gain > 40) {
@@ -197,7 +200,8 @@ int main(int argc, char** argv) {
             if (arg != "-h") {
                 std::cerr << "Unknown argument: " << arg << "\n";
             }
-            std::cerr << "Usage: " << argv[0] << " [-p tcp_port] [-l <0..40>] [-v <0..62>] [-a] [-b]\n";
+            std::cerr << "Usage: " << argv[0] << " [-d ser_nr] [-p tcp_port] [-l <0..40>] [-v <0..62>] [-a] [-b] [-m]\n";
+            std::cerr << "\t-d ser_nr   default:first\tserial number of the desired HackRF\n";
             std::cerr << "\t-p port     default:" << DEFAULT_ZEROMQ_PORT << "\tZeroMQ publisher port\n";
             std::cerr << "\t-l <0..40>  default:" << static_cast<int>(DEFAULT_LNA_GAIN) << "  \tLNA gain (rf signal amplifier; valid values: 0/8/16/24/32/40)\n";
             std::cerr << "\t-v <0..62>  default:" << static_cast<int>(DEFAULT_LNA_GAIN) << "  \tVGA gain (baseband signal amplifier, steps of 2)\n";
@@ -235,11 +239,19 @@ int main(int argc, char** argv) {
     }
 
     // open the first available device
-    result = hackrf_open(&device);
+    result = hackrf_open_by_serial(hackrf_serial, &device);
     if (result != HACKRF_SUCCESS || device == nullptr) {
         std::fprintf(stderr, "hackrf_open() failed: %s (%d)\n", hackrf_error_name(static_cast<enum hackrf_error>(result)), result);
         hackrf_exit();
         return EXIT_FAILURE;
+    }
+
+    read_partid_serialno_t serno;
+    result = hackrf_board_partid_serialno_read(device, &serno);
+    if (result != HACKRF_SUCCESS) {
+        fprintf(stderr, "hackrf_board_partid_serialno_read() failed: %s (%d)\n", hackrf_error_name(static_cast<enum hackrf_error>(result)), result);
+    } else {
+        printf("HackRF SerNo.: %08x%08x%08x%08x\n", serno.serial_no[0], serno.serial_no[1], serno.serial_no[2], serno.serial_no[3]);
     }
 
     // set center frequency
