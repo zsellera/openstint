@@ -53,6 +53,7 @@ static Frame frame;
 
 static PassingDetector passing_detector;
 static RxStatistics rx_stats;
+static bool monitor_mode = false;
 
 static const uint64_t startup_ts = std::chrono::duration_cast<std::chrono::milliseconds>(
     std::chrono::steady_clock::now().time_since_epoch()
@@ -65,11 +66,14 @@ void signal_handler(int signum) {
 }
 
 bool process_frame(Frame* frame) {
-    // std::cout << "\n\nframe " << *frame << std::endl;
     const uint8_t *softbits = frame->bits();
     if (!softbits) {
         // preamble not found
         return false;
+    }
+
+    if (monitor_mode) {
+        std::cout << "F " << *frame << std::endl;
     }
 
     uint32_t transponder_id;
@@ -187,6 +191,8 @@ int main(int argc, char** argv) {
             amp_enable = true;
         } else if (arg == "-p" && i + 1 < argc) {
             zmq_port = std::atoi(argv[++i]);
+        } else if (arg == "-m") {
+            monitor_mode = true;
         } else {
             if (arg != "-h") {
                 std::cerr << "Unknown argument: " << arg << "\n";
@@ -197,6 +203,7 @@ int main(int argc, char** argv) {
             std::cerr << "\t-v <0..62>  default:" << static_cast<int>(DEFAULT_LNA_GAIN) << "  \tVGA gain (baseband signal amplifier, steps of 2)\n";
             std::cerr << "\t-a          default:off \tEnable preamp (+13 dB to input RF signal)\n";
             std::cerr << "\t-b          default:off \tEnable bias-tee (+3.3 V, 50 mA max)\n";
+            std::cerr << "\t-m          default:off \tEnable monitor mode (print received frames to stdout)\n";
             
             return 1;
         }
