@@ -1,7 +1,11 @@
 #include "sdr_rtlsdr.hpp"
+#include <cmath>
 #include <cstdio>
 #include <cstring>
 #include <format>
+#ifndef M_PI
+#define M_PI 3.14159265358979323846
+#endif
 
 SdrRTLSDR::SdrRTLSDR() : device(nullptr), streaming(false) {}
 
@@ -60,6 +64,14 @@ bool SdrRTLSDR::open(const char *serial) {
     device_info = std::format("{}", name);
   }
 
+  // Detect RTL-SDR Blog V4
+  // Check for "V4" in strings or the "R828D" tuner which is V4-exclusive
+  if (device_info.find("V4") != std::string::npos ||
+      std::string(manufact).find("Blog V4") != std::string::npos ||
+      std::string(product).find("Blog V4") != std::string::npos) {
+    is_v4 = true;
+  }
+
   return true;
 }
 
@@ -68,50 +80,73 @@ bool SdrRTLSDR::configure(const SdrConfig &config) {
 
   // Enable direct sampling for frequencies below 24 MHz (like 5 MHz)
   // Direct sampling mode 2 = Q-branch
-  if (config.center_freq_hz < 24000000) {
+  // Note: RTL-SDR Blog V4 should NOT use direct sampling for HF (it has an
+  // upconverter)
+  if (config.center_freq_hz < 24000000 && !is_v4 &&
+      config.direct_sampling_enabled) {
     result = rtlsdr_set_direct_sampling(device, 2);
     if (result != 0) {
       last_error = "Failed to enable direct sampling mode (Q-branch)";
       return false;
     }
+  } else if (is_v4 && config.center_freq_hz < 24000000) {
+    std::fprintf(stderr, "RTL-SDR Blog V4 detected: using upconverter for HF "
+                         "(direct sampling disabled)\n");
+  } else if (!config.direct_sampling_enabled &&
+             config.center_freq_hz < 24000000) {
+    std::fprintf(stderr, "Direct sampling manually disabled for HF\n");
   }
 
-  // Set center frequency
-  result = rtlsdr_set_center_freq(device, config.center_freq_hz);
+  // Set center frequency with offset tuning to avoid DC spike
+  // We tune 250 kHz lower, pushing the DC spike -250kHz away from our target
+  // Then we digitally mix the signal back to 0Hz
+  uint32_t hardware_freq = config.center_freq_hz;
+  if (config.center_freq_hz > TUNAL_OFFSET) {
+    hardware_freq -= (uint32_t)TUNAL_OFFSET;
+  }
+  std::fprintf(
+      stderr,
+      "[DEBUG] Offset tuning ENABLED. Hardware freq: %u Hz (target: %llu Hz)\n",
+      hardware_freq, config.center_freq_hz);
+
+  result = rtlsdr_set_center_freq(device, hardware_freq);
   if (result != 0) {
-    last_error = std::format("Failed to set center frequency to {} Hz",
-                             config.center_freq_hz);
+    last_error =
+        std::format("Failed to set center frequency to {} Hz", hardware_freq);
     return false;
   }
 
   // Set sample rate
-  result = rtlsdr_set_sample_rate(device, config.sample_rate);
+  // Note: RTL-SDR hardware is generally unstable above 2.56 MSPS.
+  // We use a 2:1 software upsampler to reach the required 5.0 MSPS.
+  uint32_t target_rate = config.sample_rate;
+  uint32_t hardware_rate = target_rate;
+
+  if (target_rate == 5000000) {
+    hardware_rate = 2500000;
+    std::fprintf(stderr, "RTL-SDR optimization: Using 2.5 MSPS hardware rate "
+                         "with 2:1 upsampler to reach 5.0 MSPS\n");
+  }
+
+  result = rtlsdr_set_sample_rate(device, hardware_rate);
   if (result != 0) {
-    // Fallback: Try 2.5 MHz and upsample if 5 MHz fails
-    uint32_t fallback_rate = 2500000;
-    std::fprintf(
-        stderr,
-        "Warning: Failed to set sample rate to %u Hz, trying fallback %u Hz\n",
-        config.sample_rate, fallback_rate);
+    last_error =
+        std::format("Failed to set sample rate to {} Hz", hardware_rate);
+    return false;
+  }
 
-    result = rtlsdr_set_sample_rate(device, fallback_rate);
-    if (result != 0) {
-      last_error = std::format("Failed to set sample rate to {} Hz or {} Hz",
-                               config.sample_rate, fallback_rate);
-      return false;
-    }
-
-    // Initialize resampler (upsample by 2.0x)
-    upsample_rate = (float)config.sample_rate / (float)fallback_rate;
+  if (hardware_rate < target_rate) {
+    // Initialize resampler (upsample)
+    upsample_rate = (float)target_rate / (float)hardware_rate;
     unsigned int m = 7; // filter semi-length
     float as = 60.0f;   // stop-band attenuation [dB]
 
     if (upsampler) {
       resamp_crcf_destroy(upsampler);
     }
-    upsampler = resamp_crcf_create(upsample_rate, m, 0.45f, as, 32);
-    std::fprintf(stderr, "Initialized 2:1 upsampler (%.2f MSPS -> %.2f MSPS)\n",
-                 fallback_rate / 1e6, config.sample_rate / 1e6);
+    // Narrow bandwidth to 0.45 / upsample_rate to suppress imaging artifacts
+    upsampler =
+        resamp_crcf_create(upsample_rate, m, 0.45f / upsample_rate, as, 32);
   } else {
     // success at native rate, clean up any old resampler
     if (upsampler) {
@@ -120,6 +155,27 @@ bool SdrRTLSDR::configure(const SdrConfig &config) {
     }
     upsample_rate = 1.0f;
   }
+
+  // Initialize software mixer (Oscillator)
+  // Signal is at +TUNAL_OFFSET in baseband, we need to shift by -TUNAL_OFFSET
+  float phase_step = -2.0f * (float)M_PI * TUNAL_OFFSET / (float)hardware_rate;
+  std::fprintf(stderr,
+               "[DEBUG] Software mixer ENABLED. Phase step: %f rad/sample\n",
+               phase_step);
+
+  if (config.invert_iq) {
+    invert_iq = true;
+    // When IQ is swapped, we use std::conj() in the callback to restore
+    // the signal's spectral orientation and position (from -Offset to +Offset).
+    // Therefore, the mixer should CONTINUE to shift by -Offset to bring it to
+    // DC. So we do NOT reverse the phase_step.
+    std::fprintf(stderr, "IQ Inversion Enabled: Spectral correction active.\n");
+  } else {
+    invert_iq = false;
+  }
+
+  oscillator_step = std::polar(1.0f, phase_step);
+  oscillator = {1.0f, 0.0f};
 
   // Configure gain
   map_gain(config.unified_gain);
@@ -145,16 +201,16 @@ bool SdrRTLSDR::start_rx(SdrCallback callback) {
   streaming = true;
 
   // Start async reading in background thread
-  // The rtlsdr_read_async call blocks, so we run it in the calling thread
-  // Note: This is different from HackRF which uses its own thread
-  int result = rtlsdr_read_async(device, rx_callback_wrapper, this, 0, 0);
-
-  streaming = false;
-
-  if (result != 0) {
-    last_error = std::format("rtlsdr_read_async failed with error {}", result);
-    return false;
-  }
+  rx_thread = std::thread([this]() {
+    // Optimized buffer parameters for lower latency:
+    // 12 buffers * 16384 samples = ~196k samples total
+    int result =
+        rtlsdr_read_async(device, rx_callback_wrapper, this, 12, 16384 * 2);
+    if (result != 0) {
+      std::fprintf(stderr, "rtlsdr_read_async failed with error %d\n", result);
+    }
+    streaming = false;
+  });
 
   return true;
 }
@@ -171,6 +227,10 @@ bool SdrRTLSDR::stop_rx() {
     return false;
   }
 
+  if (rx_thread.joinable()) {
+    rx_thread.join();
+  }
+
   streaming = false;
   return true;
 }
@@ -184,10 +244,6 @@ bool SdrRTLSDR::close() {
 
   int result = rtlsdr_close(device);
   if (result != 0) {
-    last_error = std::format("Failed to close RTL-SDR device: {}", result);
-  }
-
-  if (upsampler) {
     resamp_crcf_destroy(upsampler);
     upsampler = nullptr;
   }
@@ -220,28 +276,57 @@ void SdrRTLSDR::rx_callback_wrapper(unsigned char *buf, uint32_t len,
     }
 
     for (uint32_t i = 0; i < sample_count; ++i) {
-      float i_val = (static_cast<float>(buf[2 * i]) - 127.0f) / 128.0f;
-      float q_val = (static_cast<float>(buf[2 * i + 1]) - 127.0f) / 128.0f;
-      self->float_buffer[i] = std::complex<float>(i_val, q_val);
+      float i_val = (static_cast<float>(buf[2 * i]) - 128.0f) / 128.0f;
+      float q_val = (static_cast<float>(buf[2 * i + 1]) - 128.0f) / 128.0f;
+
+      // Apply IQ Inversion if requested
+      std::complex<float> s(i_val, q_val);
+      if (self->invert_iq) {
+        s = std::conj(s);
+      }
+
+      // Apply software mixer to shift frequency back
+      self->float_buffer[i] = s * self->oscillator;
+
+      // Advance oscillator
+      self->oscillator *= self->oscillator_step;
     }
+    // Normalize oscillator periodically to prevent drift (every block)
+    self->oscillator /= std::abs(self->oscillator);
 
     // Calculate output size (upsample_rate * sample_count + filter delay)
-    uint32_t out_count = (uint32_t)(self->upsample_rate * sample_count) + 16;
+    uint32_t out_count = (uint32_t)(self->upsample_rate * sample_count) + 32;
+    if (self->resample_tmp_buffer.size() < out_count) {
+      self->resample_tmp_buffer.resize(out_count);
+    }
     if (self->conversion_buffer.size() < out_count) {
       self->conversion_buffer.resize(out_count);
     }
 
-    std::vector<std::complex<float>> resampled_floats(out_count);
     uint32_t num_written = 0;
     resamp_crcf_execute_block(self->upsampler, self->float_buffer.data(),
-                              sample_count, resampled_floats.data(),
+                              sample_count, self->resample_tmp_buffer.data(),
                               &num_written);
 
-    // Convert resampled floats back to int8
+    // Convert resampled floats back to int8 with SATURATION
+    // This prevents "wrapping" distortion on strong signals
     for (uint32_t i = 0; i < num_written; ++i) {
-      int8_t i_val = static_cast<int8_t>(resampled_floats[i].real() * 127.0f);
-      int8_t q_val = static_cast<int8_t>(resampled_floats[i].imag() * 127.0f);
-      self->conversion_buffer[i] = std::complex<int8_t>(i_val, q_val);
+      float r = self->resample_tmp_buffer[i].real() * 127.0f;
+      float im = self->resample_tmp_buffer[i].imag() * 127.0f;
+
+      // Manually clamp/saturate to prevent int8 overflow
+      if (r > 127.0f)
+        r = 127.0f;
+      else if (r < -128.0f)
+        r = -128.0f;
+
+      if (im > 127.0f)
+        im = 127.0f;
+      else if (im < -128.0f)
+        im = -128.0f;
+
+      self->conversion_buffer[i] =
+          std::complex<int8_t>(static_cast<int8_t>(r), static_cast<int8_t>(im));
     }
 
     self->user_callback(self->conversion_buffer.data(), num_written);
@@ -252,10 +337,37 @@ void SdrRTLSDR::rx_callback_wrapper(unsigned char *buf, uint32_t len,
     }
 
     for (uint32_t i = 0; i < sample_count; ++i) {
-      int8_t i_val = static_cast<int8_t>(buf[2 * i] - 127);
-      int8_t q_val = static_cast<int8_t>(buf[2 * i + 1] - 127);
-      self->conversion_buffer[i] = std::complex<int8_t>(i_val, q_val);
+      float i_val = (static_cast<float>(buf[2 * i]) - 128.0f) / 128.0f;
+      float q_val = (static_cast<float>(buf[2 * i + 1]) - 128.0f) / 128.0f;
+
+      // Apply IQ Inversion and Mixer
+      std::complex<float> s(i_val, q_val);
+      if (self->invert_iq) {
+        s = std::conj(s);
+      }
+      s *= self->oscillator;
+
+      // Advance oscillator
+      self->oscillator *= self->oscillator_step;
+
+      // Convert back to int8
+      float r = s.real() * 127.0f;
+      float im = s.imag() * 127.0f;
+      // Manually clamp/saturate
+      if (r > 127.0f)
+        r = 127.0f;
+      else if (r < -128.0f)
+        r = -128.0f;
+      if (im > 127.0f)
+        im = 127.0f;
+      else if (im < -128.0f)
+        im = -128.0f;
+
+      self->conversion_buffer[i] =
+          std::complex<int8_t>(static_cast<int8_t>(r), static_cast<int8_t>(im));
     }
+    // Normalize oscillator
+    self->oscillator /= std::abs(self->oscillator);
 
     self->user_callback(self->conversion_buffer.data(), sample_count);
   }
