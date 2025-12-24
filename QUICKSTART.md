@@ -97,10 +97,98 @@ make
 **Too high (> 80):** Spurious detections, saturation
 
 **Tuning steps:**
-1. Start: `./src/openstint -r -g 50 -m`
-2. Check detection rate and RSSI
-3. Adjust in steps of 10
-4. Find sweet spot (usually 60-70)
+1. Start: `./src/openstint -r -g 60 -m -t 0.67`
+2. Check EVM values (want < 0.50)
+3. Adjust gain between 55-65
+4. Sweet spot is typically **55-60**
+
+---
+
+## RTL-SDR Blog V4 Optimization
+
+> **Note:** The RTL-SDR Blog V4 has a built-in upconverter for HF frequencies, which requires special handling.
+
+### Automatic Optimizations (Built-in)
+
+The software automatically handles these V4-specific issues:
+
+| Feature | What It Does |
+|---------|--------------|
+| **Offset Tuning** | Tunes to 4.75 MHz hardware, mixes to 5.0 MHz digitally (avoids DC spike) |
+| **2:1 Upsampling** | Uses 2.5 MSPS hardware rate with software upsampler to reach 5.0 MSPS |
+| **Upconverter Detection** | Automatically disables direct sampling for V4 |
+
+### Recommended Settings for V4
+
+```bash
+# Optimal command for RTL-SDR Blog V4
+./src/openstint -r -g 60 -m -t 0.67
+```
+
+### Tested Gain Values
+
+| Gain | Best EVM | Assessment |
+|------|----------|------------|
+| -g 20 | 0.46 | Under-driven |
+| -g 40 | 0.46 | Good |
+| **-g 55** | **0.50** | **Optimal** |
+| **-g 60** | **0.45** | **Optimal** |
+| -g 65 | 0.55 | Starting to degrade |
+| -g 70 | 0.58 | Too high |
+
+> **Note:** EVM < 0.40 needed for reliable transponder decode. The [OpenStint Preamp](https://github.com/zsellera/openstint-preamp) (+13 dB) is recommended for V4.
+
+### Detection Threshold Tuning (`-t` flag)
+
+The detection threshold controls sensitivity vs. false positive rate:
+
+| Threshold | Sensitivity | False Positives | Use Case |
+|-----------|-------------|-----------------|----------|
+| 0.60 | High | Many | Weak signal environments |
+| **0.67** | **Balanced** | **Few** | **Recommended for V4** |
+| 0.70 | Lower | Rare | High noise environments |
+| 0.75+ | Low | None | Very clean signals only |
+
+**Finding your optimal threshold:**
+```bash
+# Start with 0.67
+./src/openstint -r -g 60 -m -t 0.67
+
+# If too many false positives (F OPN when only using AMB transponder):
+./src/openstint -r -g 60 -m -t 0.70
+
+# If missing detections:
+./src/openstint -r -g 60 -m -t 0.60
+```
+
+### Antenna Requirements
+
+| Component | Specification |
+|-----------|---------------|
+| Wire type | Parallel wires (NOT a loop) |
+| Spacing | 25-30 cm apart |
+| Termination | **330-470Ω** (NOT kΩ!) |
+| Balun | 1:9 HF balun |
+
+### Understanding the Debug Output
+
+When running with `-m` (monitor mode), you'll see:
+```
+[DEBUG] Max correlation: 0.7412 (threshold: 0.67), DC offset: (0, 0)
+S 28801 -46.768993 0 1 0
+F AMB T:6173 RSSI:-7.82746 EVM:0.694752 [...]
+```
+
+| Output | Meaning |
+|--------|---------|
+| `Max correlation: X.XX` | Peak preamble match score (higher = better) |
+| `threshold: 0.67` | Current detection threshold |
+| `DC offset: (0, 0)` | Should stay near zero with offset tuning |
+| `S` line | Statistics: timestamp, RSSI, noise, frames, passings |
+| `F AMB` | Frame detected (Legacy/AMB transponder) |
+| `F OPN` | Frame detected (OpenStint transponder) - may be false positive if you don't have one |
+| `RSSI` | Signal strength in dBm (-5 to -30 is good) |
+| `EVM` | Error Vector Magnitude (lower is better, < 0.5 is good) |
 
 ---
 

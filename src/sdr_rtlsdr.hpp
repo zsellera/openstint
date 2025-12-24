@@ -34,6 +34,8 @@ private:
   rtlsdr_dev_t *device;
   SdrCallback user_callback;
   std::atomic<bool> streaming;
+  std::thread rx_thread;
+  bool is_v4 = false;
   std::string last_error;
   std::string device_info;
 
@@ -44,6 +46,12 @@ private:
   resamp_crcf upsampler = nullptr;
   float upsample_rate = 1.0f;
   std::vector<std::complex<float>> float_buffer;
+  std::vector<std::complex<float>> resample_tmp_buffer;
+
+  std::complex<float> oscillator = 1.0f;
+  std::complex<float> oscillator_step = 1.0f;
+  static constexpr float TUNAL_OFFSET = 250000.0f; // 250 kHz offset
+  bool invert_iq = false;
 
   // Static callback for RTL-SDR C API
   static void rx_callback_wrapper(unsigned char *buf, uint32_t len, void *ctx);
