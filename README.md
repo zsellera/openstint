@@ -6,7 +6,7 @@ OpenStint is a software defined radio (SDR) based laptiming decoder, currently i
 
 Side-projects: [openstint transponder](https://github.com/zsellera/openstint-transponder) | [antenna preamplifier](https://github.com/zsellera/openstint-preamp)
 
-Check out the [track setup tutorial](docs/setup-tutorial) to get started. To learn more how SDR works, watch [Andreas Spiess](https://www.youtube.com/watch?v=xQVm-YTKR9s) explaining it.
+Check out the [track setup tutorial](docs/setup-tutorial.md) to get started. To learn more how SDR works, watch [Andreas Spiess](https://www.youtube.com/watch?v=xQVm-YTKR9s) explaining it.
 
 ## Quickstart (Ubuntu/RaspberryPi)
 
