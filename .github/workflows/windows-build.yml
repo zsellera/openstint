@@ -1,0 +1,87 @@
+name: Windows Build
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Setup MSYS2
+      uses: msys2/setup-msys2@v2
+      with:
+        msystem: MINGW64
+        update: true
+        install: >-
+          mingw-w64-x86_64-toolchain
+          mingw-w64-x86_64-cmake
+          mingw-w64-x86_64-ninja
+          mingw-w64-x86_64-zeromq
+          mingw-w64-x86_64-cppzmq
+          git
+          make
+          autoconf
+          automake
+          libtool
+          pkg-config
+
+    - name: Build and install libfec
+      shell: msys2 {0}
+      run: |
+        git clone https://github.com/quiet/libfec.git
+        cd libfec
+        ./configure --prefix=/mingw64
+        make
+        make install
+        cd ..
+
+    - name: Build and install liquid-dsp
+      shell: msys2 {0}
+      run: |
+        git clone https://github.com/jgaeddert/liquid-dsp.git
+        cd liquid-dsp
+        ./bootstrap.sh
+        ./configure --prefix=/mingw64
+        make
+        make install
+        cd ..
+
+    - name: Build and install HackRF
+      shell: msys2 {0}
+      run: |
+        git clone https://github.com/greatscottgadgets/hackrf.git
+        cd hackrf/host
+        mkdir build
+        cd build
+        cmake -G "Ninja" -DCMAKE_INSTALL_PREFIX=/mingw64 -DCMAKE_BUILD_TYPE=Release ..
+        ninja
+        ninja install
+        cd ../../..
+
+    - name: Build OpenStint
+      shell: msys2 {0}
+      run: |
+        mkdir build
+        cd build
+        cmake -G "Ninja" -DCMAKE_BUILD_TYPE=Release ..
+        ninja
+
+    - name: Package binary
+      shell: msys2 {0}
+      run: |
+        mkdir openstint-windows-x64
+        cp build/src/openstint.exe openstint-windows-x64/
+        # Copy required DLLs
+        ldd build/src/openstint.exe | grep mingw64 | awk '{print $3}' | xargs -I{} cp {} openstint-windows-x64/ || true
+        cp README.md openstint-windows-x64/
+
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: openstint-windows-x64
+        path: openstint-windows-x64/
+        retention-days: 90
