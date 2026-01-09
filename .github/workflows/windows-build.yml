@@ -35,6 +35,10 @@ jobs:
         git clone https://github.com/quiet/libfec.git
         cd libfec
         ./configure --prefix=/mingw64
+        # Fix MinGW build: remove -lc flag and use .dll.a extension for shared library
+        sed -i 's/-lc$//' Makefile
+        sed -i 's/libfec\.so/libfec.dll/' Makefile
+        sed -i 's/-soname=libfec\.so/-soname=libfec.dll/' Makefile
         make
         make install
         cd ..
