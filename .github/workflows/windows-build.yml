@@ -3,6 +3,9 @@ name: Windows Build
 on:
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: windows-latest
@@ -16,18 +19,21 @@ jobs:
       with:
         msystem: MINGW64
         update: true
+        cache: true
         install: >-
           mingw-w64-x86_64-toolchain
           mingw-w64-x86_64-cmake
           mingw-w64-x86_64-ninja
           mingw-w64-x86_64-zeromq
           mingw-w64-x86_64-cppzmq
+          mingw-w64-x86_64-hackrf
           git
           make
           autoconf
           automake
           libtool
           pkg-config
+          zip
 
     - name: Build and install libfec
       shell: msys2 {0}
@@ -38,33 +44,19 @@ jobs:
         # Fix MinGW build: remove -lc flag and use .dll.a extension for shared library
         sed -i 's/-lc$//' Makefile
         sed -i 's/libfec\.so/libfec.dll/' Makefile
-        sed -i 's/-soname=libfec\.so/-soname=libfec.dll/' Makefile
         make
-        make install
+        mkdir -p /mingw64/lib
+        cp libfec.dll libfec.a /mingw64/lib
+        cp fec.h /mingw64/include
         cd ..
 
     - name: Build and install liquid-dsp
       shell: msys2 {0}
       run: |
-        git clone https://github.com/jgaeddert/liquid-dsp.git
-        cd liquid-dsp
-        ./bootstrap.sh
-        ./configure --prefix=/mingw64
-        make
-        make install
-        cd ..
-
-    - name: Build and install HackRF
-      shell: msys2 {0}
-      run: |
-        git clone https://github.com/greatscottgadgets/hackrf.git
-        cd hackrf/host
-        mkdir build
-        cd build
-        cmake -G "Ninja" -DCMAKE_INSTALL_PREFIX=/mingw64 -DCMAKE_BUILD_TYPE=Release ..
-        ninja
-        ninja install
-        cd ../../..
+        mkdir -p /mingw64/include/liquid
+        curl --output /mingw64/include/liquid/liquid.h https://raw.githubusercontent.com/cjcliffe/CubicSDR/refs/heads/master/external/liquid-dsp/include/liquid/liquid.h
+        curl --output /mingw64/bin/libliquid.a https://raw.githubusercontent.com/cjcliffe/CubicSDR/refs/heads/master/external/liquid-dsp/gcc/64/libliquid.a
+        curl --output /mingw64/bin/libliquid.dll https://raw.githubusercontent.com/cjcliffe/CubicSDR/refs/heads/master/external/liquid-dsp/gcc/64/libliquid.dll
 
     - name: Build OpenStint
       shell: msys2 {0}
@@ -82,10 +74,28 @@ jobs:
         # Copy required DLLs
         ldd build/src/openstint.exe | grep mingw64 | awk '{print $3}' | xargs -I{} cp {} openstint-windows-x64/ || true
         cp README.md openstint-windows-x64/
+        cp -r integrations openstint-windows-x64/
 
-    - name: Upload artifact
-      uses: actions/upload-artifact@v4
+    - name: Create ZIP for release
+      shell: msys2 {0}
+      run: |
+        cd openstint-windows-x64
+        zip -r ../openstint-windows-x64.zip .
+        cd ..
+
+    - name: Create or update release
+      uses: softprops/action-gh-release@v1
       with:
-        name: openstint-windows-x64
-        path: openstint-windows-x64/
-        retention-days: 90
+        tag_name: latest-windows
+        name: Latest Windows Build
+        body: |
+          Automated build of OpenStint for Windows 64-bit
+
+          Built from commit ${{ github.sha }}
+
+          **Note:** This is an automated pre-release build.
+        files: openstint-windows-x64.zip
+        prerelease: true
+        draft: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

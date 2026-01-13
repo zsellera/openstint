@@ -31,5 +31,4 @@ target_link_libraries(openstint
     ${FEC_LIB}
     cppzmq
     m
-    c
 )

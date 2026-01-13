@@ -1,0 +1,17 @@
+[Unit]
+Description=OpenStint ZRound Bridge
+After=openstint.service
+Requires=openstint.service
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/openstint/integrations
+ExecStart=/usr/bin/python3 /home/pi/openstint/integrations/bridge-zround.py
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
