@@ -3,6 +3,9 @@ name: Windows Build
 on:
   workflow_dispatch:
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: windows-latest
@@ -16,6 +19,7 @@ jobs:
       with:
         msystem: MINGW64
         update: true
+        cache: true
         install: >-
           mingw-w64-x86_64-toolchain
           mingw-w64-x86_64-cmake
@@ -29,6 +33,7 @@ jobs:
           automake
           libtool
           pkg-config
+          zip
 
     - name: Build and install libfec
       shell: msys2 {0}
@@ -69,10 +74,28 @@ jobs:
         # Copy required DLLs
         ldd build/src/openstint.exe | grep mingw64 | awk '{print $3}' | xargs -I{} cp {} openstint-windows-x64/ || true
         cp README.md openstint-windows-x64/
+        cp -r integrations openstint-windows-x64/
 
-    - name: Upload artifact
-      uses: actions/upload-artifact@v4
+    - name: Create ZIP for release
+      shell: msys2 {0}
+      run: |
+        cd openstint-windows-x64
+        zip -r ../openstint-windows-x64.zip .
+        cd ..
+
+    - name: Create or update release
+      uses: softprops/action-gh-release@v1
       with:
-        name: openstint-windows-x64
-        path: openstint-windows-x64/
-        retention-days: 90
+        tag_name: latest-windows
+        name: Latest Windows Build
+        body: |
+          Automated build of OpenStint for Windows 64-bit
+
+          Built from commit ${{ github.sha }}
+
+          **Note:** This is an automated pre-release build.
+        files: openstint-windows-x64.zip
+        prerelease: true
+        draft: false
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
