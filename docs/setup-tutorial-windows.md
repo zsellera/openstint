@@ -12,10 +12,10 @@ Alternatively, double-click to the exe and see what happens (might warn you abou
 
 This project comes with its own communiaction protocol. To interface with existing laptimer applications, we have to run integrations. To run them, install python from [python.org](https://www.python.org/downloads/).
 
-Then in a cmd window, install ptoject dependencies:
+Then, in a cmd window, install ptoject dependencies:
 
 ```cmd
-python -m pip install tornado pymzq
+python -m pip install tornado pyzmq
 ```
 
 To run an integration:
