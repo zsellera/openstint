@@ -76,3 +76,10 @@ On our track, I ended up with a setup of LNA=+24dB, VGA=+22dB, and enabled bias-
 
 
 With these settings, the highest signals used the full range of the 8-bit ADCs inside the radio, while weaker transponder placements utilized the lower ~4 bits only. The noise affected the ~1.5 least significant digits, yielding still a good SNR for less-than-ideal transponder placements as well.
+
+## Starting the decoder software
+
+Several options exists, pick your poison:
+
+* [Standalone setup on Windows](./setup-tutorial-windows.md) - no Raspberry Pi is needed
+* [Permanent setup with Raspberry Pi](./setup-tutorial-raspberry.md) - for (semi-)permanent tracks
