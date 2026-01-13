@@ -1,0 +1,17 @@
+[Unit]
+Description=OpenStint Laptiming Decoder
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=pi
+WorkingDirectory=/home/pi/openstint
+ExecStart=/home/pi/openstint/src/openstint
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target
