@@ -16,12 +16,13 @@ You have compile it from source. Install its dependencies first:
 sudo apt-get install hackrf libhackrf libhackrf-dev libliquid libliquid-dev licppzmq cppzmq-dev libfec libfec-dev
 ```
 
-Then checkout this repo, and build with cmake/make:
+Then checkout this repo, and build with cmake/make (`Release` build enables `-O3` compiler flag, improves performance significantly):
 ```shell
-cmake .
+cmake -DCMAKE_BUILD_TYPE=Release .
 make
 ./src/openstint
 ```
+
 Vehicle passings are printed to `stdout` and published with ZeroMQ at `:5556`. The easiest method for testing with real transponders is with a *near-field magnetic probe* (sub-$10 stuff, search on ebay/aliexpress or see [Dave Jones DIY one](https://youtu.be/2xy3Hm1_ZqI?si=vmh87UB20cV0W4xt)).
 
 To use goodies in the `integrations/` directory, `sudo apt-get install python3 python3-zmq` as well.
