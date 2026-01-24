@@ -109,3 +109,24 @@ S 1792042901 1.0032545 5 0 0
 
 Possible future extensions:
 * Low-bin (ie. 64) FFT on the received signal. It would help setting up preamps and amplifiers gains.
+
+## Timebase, sector timing and timing accuracy (-t flag)
+
+**MAIN TAKEAWAY:** use the default setting (monotonic cpu clock), and enable the `-t` flag (use system clock) only after the risks & benefits have been understood and assessed.
+
+Every physical clock only approximates what mankind defined as "one second". As such, clocks inevitably drift from each other. The drift is measued in *ppm* (parts per million). A drift of *10 ppm* (typical to inexpensive crystal clocks) means 1 ms difference over 100 s when measured with by two different clocks. Unless you're after Formula-1 level of accuracies, this is most likely fine: the laptime is a difference of two timestamp close to each other, and inaccuracies do not add up over time.
+
+However, the crystal clock in your host computer has to maintain a *system time*, where such small errors do add up. To compensate for these errors, the local time is synchronized regularly to a remote time standard (backed by a more accurate atomic clock), using NTP prococol. This can introduce:
+
+* jumps in the system time (100+ ms)
+* system time might travel backwards
+* system time might artificially speed up or slow down (slewing) to catch up
+
+All the factors above pose a problem in non-F1 environments as well. To avoid these, the openstint decoder uses the host CPUs tick counter (insensitive to wall clock problems).
+
+When it comes to sector timing, we no longer measure an interval on the same clock though, but the difference of two, possibly free-running clocks. In this setup, drift errors do add up. As such, you might have to enable the `-t` flag, so the laptiming software sees a syncronized time across the various decoders (and leave the problem of time synchronization to the operating system).
+
+To address the issues introduced by time syncronization, the errors must be decreased to an acceptable level. There are several ways to achieve this, but each of them is bigger than the scope of this document. Two notable solutions are though:
+
+* a single host computer processess all sectors, and either the default monotonic clock is used or the NTP/timesync is turned off.
+* GPS-referenced local timesource, cabled network, frequent NTP sync, slewing enabled
