@@ -198,7 +198,7 @@ int main(int argc, char** argv) {
             if (arg != "-h") {
                 std::cerr << "Unknown argument: " << arg << "\n";
             }
-            std::cerr << "Usage: " << argv[0] << " [-d ser_nr] [-p tcp_port] [-l <0..40>] [-v <0..62>] [-a] [-b] [-m]\n";
+            std::cerr << "Usage: " << argv[0] << " [-d ser_nr] [-p tcp_port] [-l <0..40>] [-v <0..62>] [-a] [-b] [-m] [-t]\n";
             std::cerr << "\t-d ser_nr   default:first\tserial number of the desired HackRF\n";
             std::cerr << "\t-p port     default:" << DEFAULT_ZEROMQ_PORT << "\tZeroMQ publisher port\n";
             std::cerr << "\t-l <0..40>  default:" << static_cast<int>(DEFAULT_LNA_GAIN) << "  \tLNA gain (rf signal amplifier; valid values: 0/8/16/24/32/40)\n";

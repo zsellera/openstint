@@ -43,7 +43,7 @@ Find some built-in integrations in the `integrations/` directory. Two notable ar
 
 ```
 openstint -h
-Usage: openstint [-d ser_nr] [-p tcp_port] [-l <0..40>] [-v <0..62>] [-a] [-b] [-m]
+Usage: openstint [-d ser_nr] [-p tcp_port] [-l <0..40>] [-v <0..62>] [-a] [-b] [-m] [-t]
 	-d ser_nr   default:first   serial number of the desired HackRF
 	-p port     default:5556	ZeroMQ publisher port
 	-l <0..40>  default:24  	LNA gain (rf signal amplifier; valid values: 0/8/16/24/32/40)
@@ -51,6 +51,7 @@ Usage: openstint [-d ser_nr] [-p tcp_port] [-l <0..40>] [-v <0..62>] [-a] [-b] [
 	-a          default:off 	Enable preamp (+13 dB to input RF signal)
 	-b          default:off 	Enable bias-tee (+3.3 V, 50 mA max)
 	-m          default:off 	Enable monitor mode (print received frames to stdout)
+	-t          default:off 	Use system clock as the timebase (beware of NTP jumps)
 ```
 
 ## Future plans (some sort of a roadmap)
