@@ -30,7 +30,7 @@ Frame::Frame(TransponderType _ttype, uint64_t _ts, float preamble_energy)
     // note here: the preamble detector works with peak symbols, hence
     // practically with peak-to-peak values. preamble_energy is amplitude^2
     // for normalization post-symsync, we're better off with RMS, hence this transform
-    symbol_magnitude = std::sqrtf(preamble_energy) / std::sqrtf(2.0f); // amplitude^2 to RMS
+    symbol_magnitude = std::sqrt(preamble_energy) / std::sqrt(2.0f); // amplitude^2 to RMS
 }
 
 uint32_t concat_bits32(uint8_t *soft_bits) {
@@ -91,7 +91,7 @@ const uint8_t* Frame::bits() {
 
 float Frame::rssi() const {
     // symbol_magnitude is in RMS
-    return 20.0f * std::log10f(symbol_magnitude / ADC_FULL_SCALE);
+    return 20.0f * std::log10(symbol_magnitude / ADC_FULL_SCALE);
 }
 
 float Frame::evm() const {
