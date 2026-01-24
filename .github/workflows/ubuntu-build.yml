@@ -1,0 +1,59 @@
+name: Ubuntu Build
+
+on:
+  push:
+    branches:
+      - '**'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        compiler:
+          - name: GCC
+            cc: gcc
+            cxx: g++
+          - name: Clang
+            cc: clang
+            cxx: clang++
+
+    name: Build with ${{ matrix.compiler.name }}
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Install dependencies
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y \
+          cmake \
+          ninja-build \
+          libzmq3-dev \
+          cppzmq-dev \
+          libhackrf-dev \
+          libliquid-dev \
+          libfec0 \
+          libfec-dev
+
+    - name: Install Clang
+      if: matrix.compiler.cc == 'clang'
+      run: |
+        sudo apt-get install -y clang
+
+    - name: Build OpenStint
+      env:
+        CC: ${{ matrix.compiler.cc }}
+        CXX: ${{ matrix.compiler.cxx }}
+      run: |
+        mkdir build
+        cd build
+        cmake -G "Ninja" -DCMAKE_BUILD_TYPE=Release ..
+        ninja
+
+    - name: Verify binary
+      run: |
+        ./build/src/openstint --help || true
+        ldd ./build/src/openstint
