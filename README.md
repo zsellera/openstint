@@ -13,7 +13,7 @@ Check out the [track setup tutorial](docs/setup-tutorial.md) to get started. To 
 You have compile it from source. Install its dependencies first:
 
 ```shell
-sudo apt-get install hackrf libhackrf libhackrf-dev libliquid libliquid-dev licppzmq cppzmq-dev libfec libfec-dev
+sudo apt-get install hackrf libhackrf libhackrf-dev libliquid libliquid-dev cppzmq cppzmq-dev libfec0 libfec-dev
 ```
 
 Then checkout this repo, and build with cmake/make (`Release` build enables `-O3` compiler flag, improves performance significantly):

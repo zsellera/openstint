@@ -37,7 +37,7 @@ std::string RxStatistics::to_string() {
     // rssi = 10*log(Psig/Pmax)
     //      = 10*log(Psig) - 10*log(Pmax)
     //      = 10*log(Psig) - 20*log(Vmax)
-    float noise_floor = 10.0f * std::log10f(noise_power) - 20.0 * std::log10f(ADC_FULL_SCALE);
+    float noise_floor = 10.0f * std::log10(noise_power) - 20.0 * std::log10(ADC_FULL_SCALE);
     
     std::string temp;
     std::format_to(
