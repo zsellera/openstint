@@ -32,6 +32,7 @@
 #include "frame.hpp"
 #include "passing.hpp"
 #include "counters.hpp"
+#include "timebase.hpp"
 
 
 static hackrf_device* device = nullptr;
@@ -55,9 +56,7 @@ static PassingDetector passing_detector;
 static RxStatistics rx_stats;
 static bool monitor_mode = false;
 
-static const uint64_t startup_ts = std::chrono::duration_cast<std::chrono::milliseconds>(
-    std::chrono::steady_clock::now().time_since_epoch()
-).count();
+static Timebase timebase;
 
 // signal handler to break the capture loop
 void signal_handler(int signum) {
@@ -107,10 +106,7 @@ extern "C" int rx_callback(hackrf_transfer* transfer) {
         return 0;
     }
 
-    uint64_t buffer_timestamp = std::chrono::duration_cast<std::chrono::milliseconds>(
-        std::chrono::steady_clock::now().time_since_epoch()
-    ).count() - startup_ts;
-
+    uint64_t buffer_timestamp = timebase.now();
     uint32_t sample_count = transfer->valid_length / 2;
     const std::complex<int8_t> *samples = reinterpret_cast<const std::complex<int8_t>*>(transfer->buffer);
     
@@ -196,6 +192,8 @@ int main(int argc, char** argv) {
             zmq_port = std::atoi(argv[++i]);
         } else if (arg == "-m") {
             monitor_mode = true;
+        } else if (arg == "-t") {
+            timebase.use_system_clock();
         } else {
             if (arg != "-h") {
                 std::cerr << "Unknown argument: " << arg << "\n";
@@ -208,6 +206,7 @@ int main(int argc, char** argv) {
             std::cerr << "\t-a          default:off \tEnable preamp (+13 dB to input RF signal)\n";
             std::cerr << "\t-b          default:off \tEnable bias-tee (+3.3 V, 50 mA max)\n";
             std::cerr << "\t-m          default:off \tEnable monitor mode (print received frames to stdout)\n";
+            std::cerr << "\t-t          default:off \tUse system clock as the timebase (beware of NTP jumps)\n";
             
             return 1;
         }
@@ -312,9 +311,7 @@ int main(int argc, char** argv) {
     while (!do_exit && hackrf_is_streaming(device) == HACKRF_TRUE) {
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
         
-        const auto now = std::chrono::duration_cast<std::chrono::milliseconds>(
-            std::chrono::steady_clock::now().time_since_epoch()
-        ).count() - startup_ts;
+        const auto now = timebase.now();
 
         // report status once a second
         if (rx_stats.reporting_due(now)) {
