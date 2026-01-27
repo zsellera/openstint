@@ -4,6 +4,7 @@
 
 #include <mutex>
 #include <map>
+#include <deque>
 #include <vector>
 #include <utility>
 
@@ -32,7 +33,6 @@ struct Passing {
     uint32_t transponder_id;
     float rssi;
     size_t hits;
-    float evm;
 };
 
 struct TimeSync {
@@ -45,7 +45,7 @@ struct TimeSync {
 typedef std::pair<TransponderType, uint32_t> TransponderKey;
 
 class PassingDetector {
-    std::map<TransponderKey, std::vector<Detection>> detections;
+    std::map<TransponderKey, std::deque<Detection>> detections;
     std::vector<TimeSyncMsg> timesync_messages;
     std::mutex mutex;
 
