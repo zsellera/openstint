@@ -13,14 +13,12 @@ void PassingDetector::append(const Frame* frame, uint32_t transponder_id) {
     Detection d(frame->timestamp, frame->rssi(), frame->evm());
     
     std::lock_guard<std::mutex> lock(mutex);
-
-    // this is an optimalization / guard: if a car parks on the loop,
-    // we could fill up the memory and things go get crazy. A transponder
-    // sends on avg. ~700 messages a second. A sane limit must apply.
+    detections[transponder_key].push_back(std::move(d));
     if (detections[transponder_key].size() > TRANSPONDER_DETECTION_MSG_LIMIT) {
-        detections[transponder_key].back() = d;
-    } else {
-        detections[transponder_key].push_back(std::move(d));
+        // this is an optimalization / guard: if a car parks on the loop,
+        // we could fill up the memory and things go get crazy. A transponder
+        // sends on avg. ~700 messages a second. A sane limit must apply.
+        detections[transponder_key].pop_front();
     }
 }
 
@@ -30,26 +28,46 @@ void PassingDetector::timesync(const Frame* frame, uint32_t transponder_timestam
     timesync_messages.push_back(std::move(ts));
 }
 
-const Detection* detection_at_max_rssi(const std::vector<Detection>& detections) {
-    const auto it = std::max_element(
+struct PassingPoint {
+    uint64_t weighted_timestamp;
+    float max_rssi;
+};
+
+PassingPoint compute_passing_point(const std::deque<Detection>& detections) {
+    // Find the maximum RSSI
+    const auto max_it = std::max_element(
         detections.begin(),
         detections.end(),
         [](const Detection& a, const Detection& b) {
             return a.rssi < b.rssi;
         });
 
-    return &(*it);
+    float max_rssi = max_it->rssi;
+    float rssi_threshold = max_rssi - 6.0f;
+
+    // Calculate RSSI-weighted average timestamp for detections within 6 dB of max
+    float weighted_sum = 0.0f;
+    float weight_total = 0.0f;
+
+    for (const auto& d : detections) {
+        if (d.rssi >= rssi_threshold) {
+            weighted_sum += static_cast<float>(d.timestamp) * d.rssi;
+            weight_total += d.rssi;
+        }
+    }
+
+    uint64_t weighted_timestamp = static_cast<uint64_t>(weighted_sum / weight_total);
+    return {weighted_timestamp, max_rssi};
 }
 
-Passing create_passing(TransponderKey transponder_key, const std::vector<Detection>& detections) {
-    const Detection* d = detection_at_max_rssi(detections);
+Passing create_passing(TransponderKey transponder_key, const std::deque<Detection>& detections) {
+    PassingPoint stats = compute_passing_point(detections);
     Passing p = {
-        .timestamp = d->timestamp,
+        .timestamp = stats.weighted_timestamp,
         .transponder_type = transponder_key.first,
         .transponder_id = transponder_key.second,
-        .rssi = d->rssi,
-        .hits = detections.size(),
-        .evm = d->evm
+        .rssi = stats.max_rssi,
+        .hits = detections.size()
     };
     return p;
 }
@@ -60,9 +78,9 @@ std::vector<Passing> PassingDetector::identify_passings(uint64_t deadline) {
     // collect passings:
     std::vector<Passing> passings;
     std::vector<TransponderKey> erasable_entries;
-    for (const auto& [transponder_key, detection_vec] : detections) {
-        if (!detection_vec.empty() && detection_vec.back().timestamp <= deadline) {
-            Passing p = create_passing(transponder_key, detection_vec);
+    for (const auto& [transponder_key, detections] : detections) {
+        if (!detections.empty() && detections.back().timestamp <= deadline) {
+            Passing p = create_passing(transponder_key, detections);
             erasable_entries.push_back(transponder_key);
             if (p.hits >= REPORT_HIT_LIMIT) {
                 passings.push_back(std::move(p));
