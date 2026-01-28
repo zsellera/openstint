@@ -337,13 +337,13 @@ int main(int argc, char** argv) {
 
         std::vector<Passing> passings = passing_detector.identify_passings(now - 250ul);
         for (const auto& passing : passings) {
-            const std::string report = std::format("P {} {} {} {:.2f} {} {:.2f}",
+            const std::string report = std::format("P {} {} {} {:.2f} {} {}",
                 passing.timestamp,
                 transponder_props(passing.transponder_type).prefix,
                 passing.transponder_id,
                 passing.rssi,
                 passing.hits,
-                passing.evm
+                passing.duration
             );
 
             std::cout << report << std::endl;
