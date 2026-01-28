@@ -33,6 +33,7 @@ struct Passing {
     uint32_t transponder_id;
     float rssi;
     size_t hits;
+    uint64_t duration;
 };
 
 struct TimeSync {
