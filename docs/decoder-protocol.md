@@ -40,17 +40,19 @@ msg_type, timecode, transponder_type, transponder_id, rssi, hit_count = msg.spli
 
 ### Passings ("P")
 
+**BREAKING CHANGE:** Error Vector Magnitude is no longer reported with passings, but are visible per-frame in monitor mode (`-m` command line flag). The last parameter now is `pass_duration`.
+
 Structure:
 ```
-P <decoder_timestamp:uint64> <transponder_type:string> <transponder_id:uint32_t> <rssi:float> <hit_count:uint32_t> <evm:float> [other future parameters]
+P <decoder_timestamp:uint64> <transponder_type:string> <transponder_id:uint32_t> <rssi:float> <hit_count:uint32_t> [other future parameters]
 ```
 
 Example:
 ```
-P 1618706341 OPN 1615544 3.50 64 0.30
-P 1618714251 OPN 1615544 3.08 40 0.25
-P 1658197240 AMB 3616557 3.88 21 0.29
-P 1658197696 AMB 3616557 4.24 30 0.34
+P 1618706341 OPN 1615544 3.50 64 89
+P 1618714251 OPN 1615544 3.08 40 94
+P 1658197240 AMB 3616557 3.88 21 92
+P 1658197696 AMB 3616557 4.24 30 89
 ```
 
 * `decoder_timestamp` is a milliseconds-resolution [steady clock](https://en.cppreference.com/w/cpp/chrono/steady_clock.html) epoch, counting from the startup of the decoder process. As such, it is insensitive to updates to system time (NTP syncs). Treat it as a monotonic counter. When the decoder process restarts, the counter restarts as well.
@@ -58,11 +60,7 @@ P 1658197696 AMB 3616557 4.24 30 0.34
 * `transponder_id` is a non-negative number. Both OpenStint and AMB/RC3 defines it as "up to 7 digits", but future transponder options might increase it's width. With OpenStint transponders, even single-digit (ie. `0`) transponder ids are possible.
 * `RSSI` is the maximum "**R**elative **S**ignal **S**trenght **I**ndicator. It is expressed in terms of power, in decibel scale. The reference point (0 dB) is the maximum power the radio can receive, and every measured value is negative. It is calculated from (an approximation of) RMS value. As such, the value `-3.0` means the full scale is used, larger values indicate clipping (decrease amplifier gains). Reliable reception is possible at 3 dB above noise floor (repored in status messages).
 * `hit_count` tells about the number of successfully decoded tranponder messages during the passing. OpenStint transponders should transmit a message on average every 1.5 ms. RC4-hybrid transponders send at a similar rate, but only every ~4th is an RC3 message (which is the supported message format).
-* `evm` is Error Vector Magnitude; it's a measure of demodulation efficiency. If you build custom transponders, and this value is unusally high, the transponder is probably mis-tuned.
-
-Possible future extensions:
-
-* Passing speed detection
+* `pass_duration` is an estimate of the transponder being spent inside the loop, in miliseconds. It is usable for speed detection: 90 ms inside a 30 cm wide loop means 0.3/0.09=3.33 m/s or 12 km/h. Pass duration estimate is only available when the transponder's coil is parallel to the pickup loop. If detection is not possible, `0` value is reported.
 
 ### Time Syncronization ("T")
 
