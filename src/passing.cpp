@@ -2,18 +2,20 @@
 
 #include <algorithm> 
 #include <vector>
+#include <cmath>
 
 #include "passing.hpp"
 
 #define REPORT_HIT_LIMIT 2
 #define TRANSPONDER_DETECTION_MSG_LIMIT (1<<12)
 
-// scipy.signal.firwin(11, 16, fs=128, window="hann")
+// scipy.signal.firwin(11, 8, fs=128, window="hann")
 static std::vector<float> fir_coeffs = {
-    -0.00000000e+00f, 1.01444963e-18f, 2.82563471e-02f,
-    1.13553413e-01f, 2.21928232e-01f,  2.72524016e-01f,
-    2.21928232e-01f,  1.13553413e-01f, 2.82563471e-02f,
-    1.01444963e-18f, -0.00000000e+00f};
+    0.00000000f, 0.01320163f, 0.0588375f,
+    0.12796555f, 0.19141461f, 0.21716141f,
+    0.19141461f, 0.12796555f, 0.0588375f,
+    0.01320163f, 0.00000000f
+};
 
 void PassingDetector::append(const Frame* frame, uint32_t transponder_id) {
     TransponderKey transponder_key = std::make_pair(frame->transponder_type, transponder_id);
@@ -205,19 +207,19 @@ void rssi_waveform_detect_peaks_valleys(
     auto y_uniform = interp(t_uniform, t_sample, y_irregular);
 
     // smooth rssi waveform by a FIR filter
-    std::vector<float> y_smooth = filtfilt(fir_coeffs, y_uniform);
+    // std::vector<float> y_smooth = filtfilt(fir_coeffs, y_uniform);
 
-    // find peaks
-    auto rssi_peaks = find_peaks(y_smooth, 1.0f);
+    // find peaks in the smoothed dataset
+    auto rssi_peaks = find_peaks(y_uniform, 1.0f);
     std::transform(
         rssi_peaks.begin(), rssi_peaks.end(),
         std::back_inserter(peaks),
         [tmin, duration](const Peak p) -> InflectionPoint { return {tmin + static_cast<uint64_t>(p.index * duration / 128.0f), p.value }; }
     );
 
-    // find valleys
-    std::transform(y_smooth.begin(), y_smooth.end(), y_smooth.begin(), [](float rssi) { return -rssi; });
-    auto rssi_valleys = find_peaks(y_smooth, 1.0f);
+    // find valleys in the resampled data, higher prominence
+    std::transform(y_uniform.begin(), y_uniform.end(), y_uniform.begin(), [](float rssi) { return -rssi; });
+    auto rssi_valleys = find_peaks(y_uniform, 3.0f);
     std::transform(
         rssi_valleys.begin(), rssi_valleys.end(),
         std::back_inserter(valleys),
@@ -270,13 +272,20 @@ PassingPoint compute_passing_point(const std::deque<Detection>& detections) {
 
     if (peaks.size() == 1) {
         return {peaks[0].timestamp, max_rssi, 0};
-    } else if (peaks.size() == 2) {
-        return {(peaks[0].timestamp + peaks[1].timestamp) / 2, max_rssi, 0};
-    } else if (peaks.size() >= 3 && (valleys.size() == 2 || valleys.size()==3)) {
+    } else if (peaks.size() >= 2 && (valleys.size() == 2 || valleys.size()==3)) {
         return {
             peaks.size() == 3 ? peaks[1].timestamp : ( (peaks[0].timestamp + peaks.back().timestamp) / 2 ),
             max_rssi,
             valleys.back().timestamp - valleys.front().timestamp
+        };
+    } else if (peaks.size() == 2) { // just peaks, no valleys
+        // if both peaks are similar in size, let's assume a transponder
+        // placement which peaks when transponder is right over the loop's wires
+        // if the peaks are of different signal levels, pass duration is not available
+        return {
+            (peaks[0].timestamp + peaks[1].timestamp) / 2, 
+            max_rssi,
+            abs(peaks[0].rssi - peaks[1].rssi) < 3.0f ? (peaks[1].timestamp - peaks[0].timestamp) : 0
         };
     } else {
         return weigthed_passing(detections, max_rssi);
