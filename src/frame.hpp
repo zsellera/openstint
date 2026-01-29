@@ -40,7 +40,7 @@ struct Frame {
 std::ostream& operator <<(std::ostream& os, const Frame& f);
 
 class FrameDetector {
-    static constexpr int samples_per_symbol = 4;
+    static constexpr int samples_per_symbol = SAMPLES_PER_SYMBOL;
 
     // preamble matching
     static inline const Preamble<uint16_t> p_openstint { transponder_props(TransponderType::OpenStint).bpsk_preamble };
@@ -69,7 +69,7 @@ public:
 };
 
 class SymbolReader {
-    static constexpr int samples_per_symbol = 4;
+    static constexpr int samples_per_symbol = SAMPLES_PER_SYMBOL;
     static constexpr int filter_delay = 5;
     static constexpr int preamble_length = 16;
 
