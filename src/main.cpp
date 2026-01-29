@@ -39,10 +39,9 @@ static hackrf_device* device = nullptr;
 static std::atomic<bool> do_exit(false);
 
 static const uint64_t CENTER_FREQ_HZ       = 5000000ULL;
-static const uint32_t SAMPLE_RATE          = 5000000;
 static const uint32_t SYMBOL_RATE          = 1250000;
+static const uint32_t SAMPLE_RATE          = SYMBOL_RATE * SAMPLES_PER_SYMBOL;
 static const uint32_t BB_FILTER_BW         = 1750000;
-static const uint32_t SAMPLES_PER_SYMBOL   = SAMPLE_RATE / SYMBOL_RATE;
 static const uint8_t DEFAULT_LNA_GAIN      = 24;           // 0-40 in steps of 8 or so; experiment
 static const uint8_t DEFAULT_VGA_GAIN      = 24;           // 0-62
 static const int DEFAULT_ZEROMQ_PORT       = 5556;
@@ -119,7 +118,7 @@ extern "C" int rx_callback(hackrf_transfer* transfer) {
                 frame_detected = true; // do not use this buffer for noisefloor calculation
                 uint64_t timestamp = buffer_timestamp + (1000 * idx) / SAMPLE_RATE;
                 frame = Frame(detected.value(), timestamp, frame_detector.symbol_energy());
-                symbol_reader.read_preamble(&frame, frame_detector.dc_offset(), samples, idx+4);
+                symbol_reader.read_preamble(&frame, frame_detector.dc_offset(), samples, idx+SAMPLES_PER_SYMBOL);
             }
         } else if (frame_parse_mode == FRAME_FOUND) {
             symbol_reader.read_symbol(&frame, frame_detector.dc_offset(), samples+idx);

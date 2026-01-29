@@ -10,6 +10,8 @@ set(CMAKE_CXX_FLAGS "-Wall -Wextra -Wno-return-type-c-linkage -Wno-deprecated-de
 set(CMAKE_CXX_FLAGS_DEBUG "-g")
 set(CMAKE_CXX_FLAGS_RELEASE "-O3")
 
+set(SAMPLES_PER_SYMBOL 4 CACHE STRING "HackRF samples per symbol (2, 4, or 8)")
+
 add_executable(openstint main.cpp frame.cpp transponder.cpp passing.cpp counters.cpp)
 
 find_path(LIQUID_INCLUDE_DIR NAMES liquid/liquid.h)
@@ -23,6 +25,7 @@ find_library(FEC_LIB REQUIRED NAMES fec)
 
 find_package(cppzmq REQUIRED)
 
+target_compile_definitions(openstint PRIVATE SAMPLES_PER_SYMBOL=${SAMPLES_PER_SYMBOL})
 target_compile_options(openstint PRIVATE -I ".")
 target_include_directories(openstint PRIVATE ${LIQUID_INCLUDE_DIR} ${HACKRF_INCLUDE_DIR} ${cppzmq_INCLUDE_DIR} ${FEC_INCLUDE_DIR})
 target_link_libraries(openstint

@@ -120,7 +120,7 @@ std::optional<TransponderType> FrameDetector::process_baseband(const std::comple
         [](const std::complex<int8_t> s) { return std::norm(complex_cast<int16_t>(s)); }
     );
 
-    // run 4 circular buffers in parallel
+    // run SAMPLES_PER_SYMBOL circular buffers in parallel
     for (int i=0; i<samples_per_symbol; i++) {
         buffers[i].push(sb[i], mag2s[i]);
     }
@@ -130,7 +130,7 @@ std::optional<TransponderType> FrameDetector::process_baseband(const std::comple
     for (int i=0; i<samples_per_symbol; i++) { 
         wes[i] = buffers[i].window_energy;
     }
-    int idx = std::distance(wes, std::max_element(wes, wes+4)); // ~maxarg
+    int idx = std::distance(wes, std::max_element(wes, wes+samples_per_symbol)); // ~maxarg
 
     // update statistics (sample first element)
     s1 += samples[0];
@@ -162,10 +162,14 @@ void FrameDetector::reset_statistics_counters() {
 }
 
 float FrameDetector::symbol_energy() const {
-    uint32_t wes[4] = { buffers[0].window_energy, buffers[1].window_energy, buffers[2].window_energy, buffers[3].window_energy }; 
-    int idx = std::distance(wes, std::max_element(wes, wes+4)); // ~maxarg
-
-    return static_cast<float>(buffers[idx].window_energy) / 16.0f;
+    uint32_t max_energy = buffers[0].window_energy;
+    for (int i=1; i<samples_per_symbol; i++) {
+        if (buffers[i].window_energy > max_energy) {
+            max_energy = buffers[i].window_energy;
+        }
+    }
+    // there are 16 symbols in each buffer
+    return static_cast<float>(max_energy) / 16.0f;
 }
 
 float FrameDetector::noise_energy() const {
@@ -238,12 +242,12 @@ void SymbolReader::read_preamble0(Frame *dst, float scale, std::complex<int8_t> 
         // the actual buffer does not contain all data, must read from
         // the previous buffer as well
         start += (MAX_PREAMBLE * samples_per_symbol); // reserve buffer's size
-        for (int i=start; i<MAX_PREAMBLE * samples_per_symbol; i+=4) {
+        for (int i=start; i<MAX_PREAMBLE * samples_per_symbol; i+=samples_per_symbol) {
             read_single(dst, scale, offset, reserve_buffer+i);
         }
         start = 0;
     }
-    for (int i=start; i<end; i+=4) {
+    for (int i=start; i<end; i+=samples_per_symbol) {
         read_single(dst, scale, offset, src+i);
     }
 }
