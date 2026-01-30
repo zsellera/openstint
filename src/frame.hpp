@@ -24,13 +24,23 @@ struct Frame {
     // bitstream decision probabilities for soft-decoding
     // 0..127..255 <=> totally 0 ... unknown ... totally 1
     std::vector<uint8_t> softbits;
+    // actual symbols
+    std::vector<std::complex<float>> symbols;
+    // decoding error accumulator
+    float evm_sum = 0;
 
     uint64_t timestamp;
-    float symbol_magnitude;
-    float evm_sum;
+    
+    // preamble-data
+    // what is the optimal sampling point when reading
+    int symsync_sym = 0;
+    int symsync_bank = 0;
+    float symbol_magnitude = 0;
+    float symbol_phase = 0;
+    std::complex<float> correction = {1.0f, 0.0f}; // phase & magnitude correction
     
     Frame();
-    Frame(TransponderType transponder_type, uint64_t timestamp, float preamble_energy);
+    Frame(TransponderType transponder_type, uint64_t timestamp);
 
     const uint8_t* bits();
     float rssi() const;
@@ -69,18 +79,22 @@ public:
 };
 
 class SymbolReader {
+public:
     static constexpr int samples_per_symbol = SAMPLES_PER_SYMBOL;
-    static constexpr int filter_delay = 5;
+    static constexpr int filter_delay = 4;
+    static constexpr int num_filters = 16 / samples_per_symbol;
     static constexpr int preamble_length = 16;
+    static constexpr int reserve_buffer_size = preamble_length * samples_per_symbol;
 
-    symsync_crcf symsync;
+private:
+    firpfb_crcf sym_pfb; // preprocessing - polyphase filter bank
+    eqlms_cccf sym_eq;   // equalizer, trained on preamble data
     modemcf bpsk_modem;
-    SummingBuffer<16, std::complex<float>> symbol2_buffer;
 
     // reading a matched preamble might require lookback into
     // the previous buffer. this contain the last section of
     // the previous buffer
-    std::complex<int8_t> reserve_buffer[MAX_PREAMBLE*samples_per_symbol];
+    std::complex<int8_t> reserve_buffer[reserve_buffer_size];
 
 public:
     SymbolReader();
@@ -97,6 +111,7 @@ public:
     bool is_frame_complete(const Frame *f);
 
 private:
-    uint32_t read_single(Frame *dst, float scale, const std::complex<int8_t> offset, const std::complex<int8_t> *src);
-    void read_preamble0(Frame *dst, float scale, std::complex<int8_t> offset, const std::complex<int8_t> *src, int end);
+    void read_single(Frame *dst, const std::complex<int8_t> offset, const std::complex<int8_t> *src);
+    void read_preamble_symbol(std::complex<float> *dst, std::complex<float> symbol);
+    void train_preamble(Frame *dst, std::complex<int8_t> offset, const std::complex<int8_t> *src, int end);
 };
