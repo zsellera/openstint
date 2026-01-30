@@ -117,7 +117,7 @@ extern "C" int rx_callback(hackrf_transfer* transfer) {
                 frame_parse_mode = FRAME_FOUND;
                 frame_detected = true; // do not use this buffer for noisefloor calculation
                 uint64_t timestamp = buffer_timestamp + (1000 * idx) / SAMPLE_RATE;
-                frame = Frame(detected.value(), timestamp, frame_detector.symbol_energy());
+                frame = Frame(detected.value(), timestamp);
                 symbol_reader.read_preamble(&frame, frame_detector.dc_offset(), samples, idx+SAMPLES_PER_SYMBOL);
             }
         } else if (frame_parse_mode == FRAME_FOUND) {
