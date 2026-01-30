@@ -14,7 +14,7 @@ void RxStatistics::register_frame(bool processed) {
     if (processed) { frames_processed++; }
 }
 
-void RxStatistics::save_channel_characteristics(std::complex<int8_t> _dc_offset, float _noise_power) {
+void RxStatistics::save_channel_characteristics(std::complex<float> _dc_offset, float _noise_power) {
     std::lock_guard<std::mutex> lock(mutex);
 
     dc_offset = _dc_offset;

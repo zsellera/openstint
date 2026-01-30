@@ -16,6 +16,10 @@
 
 #define ADC_FULL_SCALE 127.0f
 
+#ifndef SAMPLES_PER_SYMBOL
+#define SAMPLES_PER_SYMBOL 4
+#endif
+
 struct Frame {
     TransponderType transponder_type; // what kind of preamble was matched
     uint32_t preamble_size;
@@ -60,6 +64,7 @@ class FrameDetector {
 
     // stream statistics:
     std::complex<int8_t> offset= {0, 0}; // dc offset ~ sample mean
+    std::complex<float> offset_hires = { 0.0f, 0.0f }; // dc offset
     float variance = 0; // ~noise power (expected value squared after dc offset removal)
     
     // statistic calculation:
@@ -75,7 +80,7 @@ public:
 
     float symbol_energy() const;
     float noise_energy() const;
-    std::complex<int8_t> dc_offset() const;
+    std::complex<float> dc_offset() const;
 };
 
 class SymbolReader {
@@ -105,13 +110,13 @@ public:
     SymbolReader& operator=(const SymbolReader&) = delete;
     SymbolReader& operator=(SymbolReader&&) noexcept = delete;
     
-    void read_preamble(Frame *dst, std::complex<int8_t> offset, const std::complex<int8_t> *src, int end);
-    void read_symbol(Frame *dst, std::complex<int8_t> offset, const std::complex<int8_t> *src);
+    void read_preamble(Frame *dst, std::complex<float> offset, const std::complex<int8_t> *src, int end);
+    void read_symbol(Frame *dst, std::complex<float> offset, const std::complex<int8_t> *src);
     void update_reserve_buffer(const std::complex<int8_t> *src, int end);
     bool is_frame_complete(const Frame *f);
 
 private:
-    void read_single(Frame *dst, const std::complex<int8_t> offset, const std::complex<int8_t> *src);
+    void read_single(Frame *dst, const std::complex<float> offset, const std::complex<int8_t> *src);
     void read_preamble_symbol(std::complex<float> *dst, std::complex<float> symbol);
-    void train_preamble(Frame *dst, std::complex<int8_t> offset, const std::complex<int8_t> *src, int end);
+    void train_preamble(Frame *dst, std::complex<float> offset, const std::complex<int8_t> *src, int end);
 };
