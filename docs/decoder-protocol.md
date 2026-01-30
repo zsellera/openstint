@@ -89,15 +89,15 @@ Possible future extensions:
 
 Structure:
 ```
-S <decoder_timestamp:uint64> <noise_power:float> <dc_offset_magnitude:uint8> <frames_received> <frames_processed> [other future parameters]
+S <decoder_timestamp:uint64> <noise_power:float> <dc_offset_magnitude:float> <frames_received> <frames_processed> [other future parameters]
 ```
 
 Example:
 ```
-S 1792039754 1.018744 5 0 0
-S 1792040804 1.2333267 5 77 52
-S 1792041851 0.9898376 5 184 135
-S 1792042901 1.0032545 5 0 0
+S 1792039754 1.018744 5.08 0 0
+S 1792040804 1.2333267 5.08 77 52
+S 1792041851 0.9898376 5.22 184 135
+S 1792042901 1.0032545 5.08 0 0
 ```
 
 * `decoder_timestamp` is the same monotoic clock as used in other messages.

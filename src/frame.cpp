@@ -13,7 +13,7 @@
 #define FRAME_MAX_SYMBOL_SPACE 128
 #define PREAMBLE_MAX_BIT_ERRORS 2
 #define STATS_UPDATE_THRESHOLD (1<<12)
-
+#define EQLMS_TRAINING_THRESHOLD (8*SAMPLES_PER_SYMBOL)
 
 Frame::Frame() {
     preamble_size = payload_size = 0;
@@ -87,9 +87,8 @@ const uint8_t* Frame::bits() {
 }
 
 float Frame::rssi() const {
-    // symbol_magnitude is peak value, RMS is 1.41x less => -3.01 dB
-    // ADC is a single channel, the magnitude can be 1.41x higher => -3.01 dB
-    return 20.0f * std::log10(symbol_magnitude / ADC_FULL_SCALE) - 6.02f;
+    // symbol sync filter also cause the signal to increase by samples_per_symbol times
+    return 20.0f * std::log10(symbol_magnitude) - 20.f * std::log10(ADC_FULL_SCALE) - 20.0f * std::log10(SAMPLES_PER_SYMBOL) + 6.02f;
 }
 
 float Frame::evm() const {
@@ -169,6 +168,7 @@ std::optional<TransponderType> FrameDetector::process_baseband(const std::comple
 void FrameDetector::update_statistics() {
     if (n > STATS_UPDATE_THRESHOLD) {
         offset = complex_cast<int8_t>(s1 / n);
+        offset_hires = complex_cast<float>(s1) / static_cast<float>(n);
         variance = static_cast<float>(s2) / (n - 1); // sample's variance (vs population variance)
         reset_statistics_counters();
     }
@@ -195,8 +195,8 @@ float FrameDetector::noise_energy() const {
     return variance;
 }
 
-std::complex<int8_t> FrameDetector::dc_offset() const {
-    return offset;
+std::complex<float> FrameDetector::dc_offset() const {
+    return offset_hires;
 }
 
 SymbolReader::SymbolReader() {
@@ -217,11 +217,11 @@ SymbolReader::~SymbolReader() {
     modemcf_destroy(bpsk_modem);
 }
 
-void SymbolReader::read_single(Frame *frame, const std::complex<int8_t> offset, const std::complex<int8_t> *src) {
+void SymbolReader::read_single(Frame *frame, const std::complex<float> offset, const std::complex<int8_t> *src) {
     // convert i8 to f32
     std::complex<float> bf[samples_per_symbol];
     for (int i=0; i<samples_per_symbol; ++i) { // something like vcvt_s32_f32
-        bf[i] = complex_cast<float>(src[i]-offset);
+        bf[i] = complex_cast<float>(src[i]) - offset;
     }
     // sample the symbol (symbol sync)
     for (int i=0; i<samples_per_symbol; i++) {
@@ -256,7 +256,7 @@ void SymbolReader::read_preamble_symbol(std::complex<float> *dst, std::complex<f
     }
 }
 
-void SymbolReader::train_preamble(Frame *frame, std::complex<int8_t> offset, const std::complex<int8_t> *src, int end) {
+void SymbolReader::train_preamble(Frame *frame, std::complex<float> offset, const std::complex<int8_t> *src, int end) {
     const int sample_count = preamble_length * samples_per_symbol;
     const int resampled_size = preamble_length * 16; // resample to 16 samples/symbol
     std::complex<float> resampled[resampled_size];
@@ -266,10 +266,10 @@ void SymbolReader::train_preamble(Frame *frame, std::complex<int8_t> offset, con
         int sample_idx = end - sample_count + i;
         if (sample_idx < 0) {
             sample_idx += reserve_buffer_size;
-            std::complex<float> symbol = complex_cast<float>(reserve_buffer[sample_idx]-offset);
+            std::complex<float> symbol = complex_cast<float>(reserve_buffer[sample_idx]) - offset;
             read_preamble_symbol(resampled + i*num_filters, symbol);
         } else {
-            std::complex<float> symbol = complex_cast<float>(src[sample_idx]-offset);
+            std::complex<float> symbol = complex_cast<float>(src[sample_idx]) - offset;
             read_preamble_symbol(resampled + i*num_filters, symbol);
         }
     }
@@ -298,7 +298,7 @@ void SymbolReader::train_preamble(Frame *frame, std::complex<int8_t> offset, con
     frame->correction = std::polar(1.0f / frame->symbol_magnitude, -frame->symbol_phase);
 
     // train EQ on preamble
-    for (int i=0; i<preamble_length; i++) {
+    for (int i=0; i<preamble_length && frame->symbol_magnitude>EQLMS_TRAINING_THRESHOLD; i++) {
         std::complex<float> symbol = resampled[i*16 + sampling_point] * frame->correction;
         std::complex<float> d_hat, d_prime;
         unsigned int bit; // bit-level decoding
@@ -329,7 +329,7 @@ void SymbolReader::train_preamble(Frame *frame, std::complex<int8_t> offset, con
     }
 }
 
-void SymbolReader::read_preamble(Frame *dst, std::complex<int8_t> offset, const std::complex<int8_t> *src, int end) {
+void SymbolReader::read_preamble(Frame *dst, std::complex<float> offset, const std::complex<int8_t> *src, int end) {
     firpfb_crcf_reset(sym_pfb);
     modem_reset(bpsk_modem);
 
@@ -345,7 +345,7 @@ void SymbolReader::update_reserve_buffer(const std::complex<int8_t> *src, int en
     );
 }
 
-void SymbolReader::read_symbol(Frame *dst, std::complex<int8_t> offset, const std::complex<int8_t> *src) {
+void SymbolReader::read_symbol(Frame *dst, std::complex<float> offset, const std::complex<int8_t> *src) {
     read_single(dst, offset, src);
 }
 

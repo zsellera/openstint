@@ -47,7 +47,7 @@ static const uint8_t DEFAULT_VGA_GAIN      = 24;           // 0-62
 static const int DEFAULT_ZEROMQ_PORT       = 5556;
 
 static enum FrameParseMode { FRAME_SEEK, FRAME_FOUND } frame_parse_mode = FRAME_SEEK;
-static FrameDetector frame_detector(0.9f);
+static FrameDetector frame_detector(0.88f);
 static SymbolReader symbol_reader;
 static Frame frame;
 
