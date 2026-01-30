@@ -4,8 +4,6 @@
 #include <string>
 #include <string_view>
 
-#define MAX_PREAMBLE 16
-
 enum class TransponderType {
     OpenStint, // support for openstint protocol
     Legacy     // legacy (Amb) protocol
