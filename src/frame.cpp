@@ -18,12 +18,14 @@
 Frame::Frame() {
     preamble_size = payload_size = 0;
     softbits.reserve(FRAME_MAX_SYMBOL_SPACE);
+    symbols.reserve(FRAME_MAX_SYMBOL_SPACE);
     timestamp = 0;
 }
 
 Frame::Frame(TransponderType _ttype, uint64_t _ts)
     : transponder_type(_ttype), timestamp(_ts) {
     softbits.reserve(FRAME_MAX_SYMBOL_SPACE);
+    symbols.reserve(FRAME_MAX_SYMBOL_SPACE);
     payload_size = transponder_props(transponder_type).payload_size;
     preamble_size = 16;
 }
@@ -91,7 +93,7 @@ float Frame::rssi() const {
 }
 
 float Frame::evm() const {
-    return evm_sum / softbits.size();
+    return evm_sum / (payload_size + SymbolReader::filter_delay);
 }
 
 std::ostream& operator <<(std::ostream& os, const Frame& f) {
@@ -205,11 +207,13 @@ SymbolReader::SymbolReader() {
         cutoff_freq,
         40.0f               // filter rolloff
     );
+    sym_eq = eqlms_cccf_create(NULL, 3); // a very quick EQ
     bpsk_modem = modemcf_create(LIQUID_MODEM_BPSK);
 }
 
 SymbolReader::~SymbolReader() {
     firpfb_crcf_destroy(sym_pfb);
+    eqlms_cccf_destroy(sym_eq);
     modemcf_destroy(bpsk_modem);
 }
 
@@ -228,6 +232,11 @@ void SymbolReader::read_single(Frame *frame, const std::complex<int8_t> offset, 
 
             symbol *= frame->correction;
 
+            // equalization
+            eqlms_cccf_push(sym_eq, symbol);
+            eqlms_cccf_execute(sym_eq, &symbol);
+
+            // demodulate
             unsigned int bit; // bit-level decoding
             uint8_t soft_bit; // how likely the symbol is
             modemcf_demodulate_soft(bpsk_modem, symbol, &bit, &soft_bit);
@@ -288,10 +297,30 @@ void SymbolReader::train_preamble(Frame *frame, std::complex<int8_t> offset, con
     frame->symbol_phase = std::arg(rotated2x) / 2.0f;
     frame->correction = std::polar(1.0f / frame->symbol_magnitude, -frame->symbol_phase);
 
+    // train EQ on preamble
+    for (int i=0; i<preamble_length; i++) {
+        std::complex<float> symbol = resampled[i*16 + sampling_point] * frame->correction;
+        std::complex<float> d_hat, d_prime;
+        unsigned int bit; // bit-level decoding
+
+        eqlms_cccf_push(sym_eq, symbol);
+        if (i >= filter_delay) {
+            eqlms_cccf_execute(sym_eq, &d_hat);
+            modemcf_demodulate(bpsk_modem, d_hat, &bit);
+            modemcf_get_demodulator_sample(bpsk_modem, &d_prime);
+            eqlms_cccf_step(sym_eq, d_prime, d_hat);
+        }
+    }
+
     // read preamble to frame (with initial filter response)
     for (int i=0; i<preamble_length; i++) {
         std::complex<float> symbol = resampled[i*16 + sampling_point] * frame->correction;
 
+        // run EQ:
+        eqlms_cccf_push(sym_eq, symbol);
+        eqlms_cccf_execute(sym_eq, &symbol);
+
+        // demodulate:
         unsigned int bit; // bit-level decoding
         uint8_t soft_bit; // how likely the symbol is
         modemcf_demodulate_soft(bpsk_modem, symbol, &bit, &soft_bit);

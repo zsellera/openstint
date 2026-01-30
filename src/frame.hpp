@@ -79,13 +79,16 @@ public:
 };
 
 class SymbolReader {
+public:
     static constexpr int samples_per_symbol = SAMPLES_PER_SYMBOL;
     static constexpr int filter_delay = 4;
     static constexpr int num_filters = 16 / samples_per_symbol;
     static constexpr int preamble_length = 16;
     static constexpr int reserve_buffer_size = preamble_length * samples_per_symbol;
 
+private:
     firpfb_crcf sym_pfb; // preprocessing - polyphase filter bank
+    eqlms_cccf sym_eq;   // equalizer, trained on preamble data
     modemcf bpsk_modem;
 
     // reading a matched preamble might require lookback into
