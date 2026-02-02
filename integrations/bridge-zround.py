@@ -8,7 +8,10 @@ import zmq
 import zmq.asyncio
 import argparse
 import time
+import sys
 
+if sys.platform == 'win32':
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 class Bridge:
     def __init__(self):
