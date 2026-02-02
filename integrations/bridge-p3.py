@@ -106,30 +106,29 @@ class Bridge:
             P3KeyVal(P3Frame.TOF_STRENGTH, signal_strenght_converter(rssi)),
             P3KeyVal(P3Frame.TOF_HITS, hit_count),
             P3KeyVal(P3Frame.TOF_FLAGS, 0),
-            P3KeyVal(P3Frame.TOF_DECODER_ID, 0x00),
+            P3KeyVal(P3Frame.TOF_DECODER_ID, self.decoder_id),
         ])
         return p3_frame.prepare_buffer()
     
     def version_response(self):
         p3_frame = P3Frame(P3Frame.TOR_VERSION, [
             P3KeyVal(P3Frame.TOF_DECODER_TYPE, 0x10),
-            # P3KeyValVariadic(P3Frame.TOF_DESCRIPTION, bytearray('OPNS', 'ascii')),
+            P3KeyValVariadic(P3Frame.TOF_DESCRIPTION, bytearray('OpenStint', 'ascii')),
             P3KeyValVariadic(P3Frame.TOF_VERSION, bytearray('4.4', 'ascii')),
-            P3KeyVal(P3Frame.TOF_RELEASE, 1),
-            P3KeyVal(P3Frame.TOF_REGISTRATION, 2),
-            P3KeyVal(P3Frame.TOF_BUILD_NUMBER, 3),
-            P3KeyVal(P3Frame.TOF_DECODER_ID, 0),
+            P3KeyVal(P3Frame.TOF_RELEASE, 0),
+            P3KeyVal(P3Frame.TOF_REGISTRATION, 0),
+            P3KeyVal(P3Frame.TOF_BUILD_NUMBER, 0),
+            P3KeyVal(P3Frame.TOF_DECODER_ID, self.decoder_id),
         ])
         return p3_frame.prepare_buffer()
 
     def get_time_response(self):
         dt = (time.time() - self.last_decoder_timestamp[0])*1000 + self.last_decoder_timestamp[1]
-        print(dt)
         p3_frame = P3Frame(P3Frame.TOR_GET_TIME, [
-            P3KeyVal(P3Frame.TOF_DECODER_TYPE, 0x10),
-            P3KeyVal(P3Frame.TOF_UNKNOWN_1, 0),
-            P3KeyVal(P3Frame.TOF_RTC_TIME2, int(dt*1000)),
-            P3KeyVal(P3Frame.TOF_DECODER_ID, 0),
+            P3KeyVal(P3Frame.TOF_GETTIME_RTC, int(dt*1000)),
+            P3KeyVal(P3Frame.TOF_UNKNOWN_2, 0),
+            P3KeyVal(P3Frame.TOF_UNKNOWN_3, int(dt*1000)),
+            P3KeyVal(P3Frame.TOF_DECODER_ID, self.decoder_id),
         ])
         return p3_frame.prepare_buffer()
     
@@ -139,7 +138,7 @@ class Bridge:
             P3KeyVal(P3Frame.TOF_GPS, 0),
             P3KeyVal(P3Frame.TOF_TEMPERATURE, 0),
             P3KeyVal(P3Frame.TOF_INPUT_VOLTAGE, 50),
-            P3KeyVal(P3Frame.TOF_DECODER_ID, 0),
+            P3KeyVal(P3Frame.TOF_DECODER_ID, self.decoder_id),
         ])
         return p3_frame.prepare_buffer()
         
@@ -224,8 +223,9 @@ class P3Frame:
     TOF_UNTIL = (0x02, 4)
 
     # GET_TIME fields
-    TOF_UNKNOWN_1 = (0x04, 8)
-    TOF_RTC_TIME2 = (0x05, 8)
+    TOF_GETTIME_RTC = (0x01, 8)
+    TOF_UNKNOWN_2 = (0x04, 2)
+    TOF_UNKNOWN_3 = (0x05, 8)
 
     # CRC16 lookup table (initialized once at class level)
     CRC16_TABLE = None
