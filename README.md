@@ -4,11 +4,6 @@
 
 OpenStint is a software defined radio (SDR) based laptiming decoder, currently implemented with HackRF One. It works both with its own [transponder protocol](docs/transponder-protocol.md) and with AMB/RC3-based transponders. It can run on a Raspberry Pi 3 Model B+. Only a minimal electronics knowledge is required; touching a soldering iron is optional.
 
-Side-projects: [openstint transponder](https://github.com/zsellera/openstint-transponder) | [antenna preamplifier](https://github.com/zsellera/openstint-preamp)
-
-Check out the [track setup tutorial](docs/setup-tutorial.md) to get started. To learn more how SDR works, watch [Andreas Spiess](https://www.youtube.com/watch?v=xQVm-YTKR9s) explaining it.
-
-## Feature highlights
 * :tada: Supports OpenStint transponder, as well as RC3/RC4Hybrid/MRT and other RC3-clones
 * :wrench: Off-the-shelf components, no electronic skills are required.
 * :checkered_flag: Tested with [ZRound](https://www.zround.com/index.php/download-mananger/) and [LiveTime Scoring](https://www.livetimescoring.com/)
@@ -17,7 +12,11 @@ Check out the [track setup tutorial](docs/setup-tutorial.md) to get started. To 
 * :car: Passing speed detection
 * :brain: Adaptive filters enchance reception quality
 
-**Download:** [Windows users](docs/setup-tutorial-windows.md) can download precompiled binaries; the rest of us has to compile from source.
+**Download:** [Windows users](docs/setup-tutorial-windows.md) can download precompiled binaries; the rest of us have to compile from source.
+
+Side-projects: [openstint transponder](https://github.com/zsellera/openstint-transponder) | [antenna preamplifier](https://github.com/zsellera/openstint-preamp)
+
+Check out the [track setup tutorial](docs/setup-tutorial.md) to get started. To learn more how SDR works, watch [Andreas Spiess](https://www.youtube.com/watch?v=xQVm-YTKR9s) explaining it.
 
 ## Compile from source
 You have compile it from source. Install its dependencies first:
