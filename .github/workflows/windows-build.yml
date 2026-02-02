@@ -74,7 +74,8 @@ jobs:
     - name: Build bridge-p3.exe
       run: |
         pip install pyzmq pyinstaller
-        pyinstaller --onefile --name bridge-p3 --hidden-import=zmq integrations/bridge-p3.py
+        pyinstaller --onefile --name bridge-p3 --hidden-import=zmq --hidden-import=tornado integrations/bridge-p3.py
+        pyinstaller --onefile --name bridge-zround --hidden-import=zmq --hidden-import=tornado integrations/bridge-zround.py
 
     - name: Package binary
       shell: msys2 {0}
@@ -84,6 +85,7 @@ jobs:
         # Copy required DLLs
         ldd build/src/openstint.exe | grep mingw64 | awk '{print $3}' | xargs -I{} cp {} openstint-windows-x64/ || true
         cp dist/bridge-p3.exe openstint-windows-x64/
+        cp dist/bridge-zround.exe openstint-windows-x64/
         cp README.md openstint-windows-x64/
         cp -r integrations openstint-windows-x64/
 
