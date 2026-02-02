@@ -7,6 +7,10 @@ import argparse
 import time
 import struct
 import traceback
+import sys
+
+if sys.platform == 'win32':
+    asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
 FORMAT_CHARS = {1: 'B', 2: 'H', 4: 'L', 8: 'Q'}
 OPENSTINT_RSSI_FULL_SCALE = 1.76 + 8 * 6.02

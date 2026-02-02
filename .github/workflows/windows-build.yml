@@ -73,7 +73,7 @@ jobs:
 
     - name: Build bridge-p3.exe
       run: |
-        pip install pyzmq pyinstaller
+        pip install pyzmq tornado pyinstaller
         pyinstaller --onefile --name bridge-p3 --hidden-import=zmq --hidden-import=tornado integrations/bridge-p3.py
         pyinstaller --onefile --name bridge-zround --hidden-import=zmq --hidden-import=tornado integrations/bridge-zround.py
 
