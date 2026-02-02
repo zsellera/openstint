@@ -8,12 +8,18 @@ Side-projects: [openstint transponder](https://github.com/zsellera/openstint-tra
 
 Check out the [track setup tutorial](docs/setup-tutorial.md) to get started. To learn more how SDR works, watch [Andreas Spiess](https://www.youtube.com/watch?v=xQVm-YTKR9s) explaining it.
 
-## Quickstart (Windows)
+## Feature highlights
+* :tada: Supports OpenStint transponder, as well as RC3/RC4Hybrid/MRT and other RC3-clones
+* :wrench: Off-the-shelf components, no electronic skills are required.
+* :checkered_flag: Tested with [ZRound](https://www.zround.com/index.php/download-mananger/) and [LiveTime Scoring](https://www.livetimescoring.com/)
+* :chart_with_downwards_trend: Low resource requirements: runs even on a Rapsberry Pi 3 Model B+
+* :stopwatch: Precise passing time detection
+* :car: Passing speed detection
+* :brain: Adaptive filters enchance reception quality
 
-There is a precompiled version zipped in the [releases](https://github.com/zsellera/openstint/releases/tag/latest-windows) section.
+**Download:** [Windows users](docs/setup-tutorial-windows.md) can download precompiled binaries; the rest of us has to compile from source.
 
-## Quickstart (Ubuntu/RaspberryPi)
-
+## Compile from source
 You have compile it from source. Install its dependencies first:
 
 ```shell
