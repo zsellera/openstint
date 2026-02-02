@@ -66,6 +66,17 @@ jobs:
         cmake -G "Ninja" -DCMAKE_BUILD_TYPE=Release ..
         ninja
 
+    - name: Setup Python
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+
+    - name: Build bridge-p3.exe
+      run: |
+        pip install pyzmq tornado pyinstaller
+        pyinstaller --onefile --name bridge-p3 --hidden-import=zmq --hidden-import=tornado integrations/bridge-p3.py
+        pyinstaller --onefile --name bridge-zround --hidden-import=zmq --hidden-import=tornado integrations/bridge-zround.py
+
     - name: Package binary
       shell: msys2 {0}
       run: |
@@ -73,6 +84,8 @@ jobs:
         cp build/src/openstint.exe openstint-windows-x64/
         # Copy required DLLs
         ldd build/src/openstint.exe | grep mingw64 | awk '{print $3}' | xargs -I{} cp {} openstint-windows-x64/ || true
+        cp dist/bridge-p3.exe openstint-windows-x64/
+        cp dist/bridge-zround.exe openstint-windows-x64/
         cp README.md openstint-windows-x64/
         cp -r integrations openstint-windows-x64/
 
