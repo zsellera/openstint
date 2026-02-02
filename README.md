@@ -8,8 +8,18 @@ Side-projects: [openstint transponder](https://github.com/zsellera/openstint-tra
 
 Check out the [track setup tutorial](docs/setup-tutorial.md) to get started. To learn more how SDR works, watch [Andreas Spiess](https://www.youtube.com/watch?v=xQVm-YTKR9s) explaining it.
 
-## Quickstart (Ubuntu/RaspberryPi)
+## Feature highlights
+* :tada: Supports OpenStint transponder, as well as RC3/RC4Hybrid/MRT and other RC3-clones
+* :wrench: Off-the-shelf components, no electronic skills are required.
+* :checkered_flag: Tested with [ZRound](https://www.zround.com/index.php/download-mananger/) and [LiveTime Scoring](https://www.livetimescoring.com/)
+* :chart_with_downwards_trend: Low resource requirements: runs even on a Rapsberry Pi 3 Model B+
+* :stopwatch: Precise passing time detection
+* :car: Passing speed detection
+* :brain: Adaptive filters enchance reception quality
 
+**Download:** [Windows users](docs/setup-tutorial-windows.md) can download precompiled binaries; the rest of us has to compile from source.
+
+## Compile from source
 You have compile it from source. Install its dependencies first:
 
 ```shell
@@ -37,7 +47,7 @@ The primary method of 3rd-party integration with OpenStint is via ZeroMQ. The `o
 
 The [decoder protocol](docs/decoder-protocol.md) is documented under the `docs/` directory.
 
-Find some built-in integrations in the `integrations/` directory. Two notable are `subscriber.py` and `laptimer.py`, both being ChatGPT-generared without any modifications.
+Find some built-in integrations in the `integrations/` directory. Two notable are `bridge-zround.py` and `bridge-p3.py`.
 
 ## Command line arguments
 
@@ -56,9 +66,9 @@ Usage: openstint [-d ser_nr] [-p tcp_port] [-l <0..40>] [-v <0..62>] [-a] [-b] [
 
 ## Future plans (some sort of a roadmap)
 
-* Increase compatibilty with existing software by implementing an OpenStint-P3 bridge
-* RTL-SDR support (inexpensive software defined radio)
-* Adaptive equalization to decrease EVM
+- [x] Increase compatibilty with existing software by implementing an OpenStint-P3 bridge
+- [ ] RTL-SDR support (inexpensive software defined radio)
+- [x] Adaptive equalization (compensate antenna non-idealities)
 
 **RC4 support is not pursued.** There are already multiple open-source transponder projects out there. One can order an assembled 2x10pcs OpenStint-compatible panel from JLCPCB for less than $100, including taxes and shipping. For a cost of a single brand-name transponder, a whole club can enjoy reliable laptiming. Then why bother decyphering a protocol which was designed to be and to remain closed?!?
 
