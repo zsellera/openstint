@@ -46,14 +46,16 @@ Copy the systemd service files:
 ```bash
 sudo cp systemd/openstint.service /etc/systemd/system/
 sudo cp systemd/bridge-zround.service /etc/systemd/system/
+sudo cp systemd/bridge-p3.service /etc/systemd/system/
 sudo systemctl daemon-reload
 ```
 
-Enable auto-start on boot:
+Enable auto-start on boot (enable the bridges you need):
 
 ```bash
 sudo systemctl enable openstint.service
 sudo systemctl enable bridge-zround.service
+sudo systemctl enable bridge-p3.service
 ```
 
 Start the services:
@@ -61,6 +63,7 @@ Start the services:
 ```bash
 sudo systemctl start openstint.service
 sudo systemctl start bridge-zround.service
+sudo systemctl start bridge-p3.service
 ```
 
 ## 5. Verify
@@ -70,6 +73,7 @@ Check service status:
 ```bash
 sudo systemctl status openstint.service
 sudo systemctl status bridge-zround.service
+sudo systemctl status bridge-p3.service
 ```
 
 View logs:
@@ -77,6 +81,7 @@ View logs:
 ```bash
 sudo journalctl -u openstint.service -f
 sudo journalctl -u bridge-zround.service -f
+sudo journalctl -u bridge-p3.service -f
 ```
 
 ## Configuration
