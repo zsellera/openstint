@@ -66,7 +66,6 @@ int main(int argc, char** argv) {
     const uint32_t sample_rate = SAMPLE_RATE;
     int gain_tenths_db = DEFAULT_GAIN_TENTHS_DB;
     bool bias_tee = false;
-    bool direct_sampling = false;
     const char* serial = nullptr;
 
     // process command line arguments
@@ -77,8 +76,6 @@ int main(int argc, char** argv) {
             serial = argv[++i];
         } else if (arg == "-g" && i + 1 < argc) {
             gain_tenths_db = std::atoi(argv[++i]) * 10;
-        } else if (arg == "-D") {
-            direct_sampling = true;
         } else if (arg == "-b") {
             bias_tee = true;
         } else if (parse_common_arguments(i, argc, arg, argv)) {
@@ -90,8 +87,7 @@ int main(int argc, char** argv) {
             std::cerr << "Usage: " << argv[0] << " [-d ser_nr] [-g <gain_dB>] [-D] [-b] [-p tcp_port] [-m] [-t]\n";
             std::cerr << "\t-d ser_nr   default:first\tserial number of the desired RTL-SDR\n";
             std::cerr << "\t-g <dB>     default:" << DEFAULT_GAIN_TENTHS_DB / 10 << "  \ttuner gain in dB\n";
-            std::cerr << "\t-D          default:off \tEnable direct sampling (Q-branch, for non-V4 dongles at HF)\n";
-            std::cerr << "\t-b          default:off \tEnable bias-tee (+4.7 V on RTL-SDR Blog V3/V4)\n";
+            std::cerr << "\t-b          default:off \tEnable bias-tee (+4.5 V on RTL-SDR Blog V3/V4)\n";
             std::cerr << "\t-p port     default:" << DEFAULT_ZEROMQ_PORT << "\tZeroMQ publisher port\n";
             std::cerr << "\t-m          default:off \tEnable monitor mode (print received frames to stdout)\n";
             std::cerr << "\t-t          default:off \tUse system clock as the timebase (beware of NTP jumps)\n";
@@ -141,16 +137,6 @@ int main(int argc, char** argv) {
         std::printf("RTL-SDR: %s\n", name);
     }
 
-    // enable direct sampling if requested (Q-branch for HF reception on non-V4 dongles)
-    if (direct_sampling) {
-        result = rtlsdr_set_direct_sampling(device, 2);
-        if (result != 0) {
-            std::fprintf(stderr, "rtlsdr_set_direct_sampling() failed: %d\n", result);
-            goto cleanup;
-        }
-        std::cerr << "Direct sampling enabled (Q-branch)\n";
-    }
-
     // set center frequency
     result = rtlsdr_set_center_freq(device, freq_hz);
     if (result != 0) {
@@ -163,6 +149,12 @@ int main(int argc, char** argv) {
     if (result != 0) {
         std::fprintf(stderr, "rtlsdr_set_sample_rate() failed: %d\n", result);
         goto cleanup;
+    }
+
+    // set IF filter bandwidth to 2.0 MHz - to be refined
+    result = rtlsdr_set_tuner_bandwidth(device, 2000000);
+    if (result != 0) {
+        std::fprintf(stderr, "rtlsdr_set_tuner_bandwidth() failed: %d\n", result);
     }
 
     // set manual gain mode and tuner gain

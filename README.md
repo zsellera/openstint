@@ -71,8 +71,7 @@ Usage: openstint_hackrf [-d ser_nr] [-l <0..40>] [-v <0..62>] [-a] [-b] [-p tcp_
 openstint_rtlsdr -h
 Usage: openstint_rtlsdr [-d ser_nr] [-g <gain_dB>] [-D] [-b] [-p tcp_port] [-m] [-t]
 	-d ser_nr   default:first	serial number of the desired RTL-SDR
-	-g <dB>     default:40  	tuner gain in dB
-	-D          default:off 	Enable direct sampling (Q-branch, for non-V4 dongles at HF)
+	-g <dB>     default:20  	tuner gain in dB
 	-b          default:off 	Enable bias-tee (+4.7 V on RTL-SDR Blog V3/V4)
 	-p port     default:5556	ZeroMQ publisher port
 	-m          default:off 	Enable monitor mode (print received frames to stdout)
