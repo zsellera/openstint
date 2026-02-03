@@ -2,10 +2,10 @@
 
 <img src="docs/logo.svg" alt="OpenStint logo" width="200"/>
 
-OpenStint is a software defined radio (SDR) based laptiming decoder, currently implemented with HackRF One. It works both with its own [transponder protocol](docs/transponder-protocol.md) and with AMB/RC3-based transponders. It can run on a Raspberry Pi 3 Model B+. Only a minimal electronics knowledge is required; touching a soldering iron is optional.
+OpenStint is a software defined radio (SDR) based laptiming decoder, using either *HackRF One* or *RTL-SDR v4*. It works both with its own [transponder protocol](docs/transponder-protocol.md) and with AMB/RC3-based transponders. It can run on a Raspberry Pi 3 Model B+. Only a minimal electronics knowledge is required; touching a soldering iron is optional.
 
 * :tada: Supports OpenStint transponder, as well as RC3/RC4Hybrid/MRT and other RC3-clones
-* :wrench: Off-the-shelf components, no electronic skills are required.
+* :wrench: Off-the-shelf components, no electronic skills are required (HackRF One, RTL-SDR v4).
 * :checkered_flag: Tested with [ZRound](https://www.zround.com/index.php/download-mananger/) and [LiveTime Scoring](https://www.livetimescoring.com/)
 * :chart_with_downwards_trend: Low resource requirements: runs even on a Rapsberry Pi 3 Model B+
 * :stopwatch: Precise passing time detection
@@ -40,6 +40,8 @@ Note on Mac: we can't `brew install libfec`, compile and install it [from source
 
 If this is your first rodeo, `sudo apt-get install cmake build-essentials libtool autoconf` as well.
 
+HackRF One users: there is a build flag `SAMPLES_PER_SYMBOL`, default to `4`, resulting in 5 MSPS sampling rate. Better reception is achievable by setting it to `8` (10 MSPS) at the cost of higher CPU utilization. On resource-constrained environment, lower it to `2` (2.5 MSPS: lower CPU-usage, shittier reception). RTL-SDR maxes out at the required minimum of 2.5 MSPS (`SAMPLES_PER_SYMBOL=2`), there is no way to fine-tune that.
+
 ## Integrations
 
 The primary method of 3rd-party integration with OpenStint is via ZeroMQ. The `openstint` process listens by default on port `:5556`, and acts as a ZeroMQ PUBLISHER for arbitrary number of clients.
@@ -72,19 +74,28 @@ openstint_rtlsdr -h
 Usage: openstint_rtlsdr [-d ser_nr] [-g <gain_dB>] [-D] [-b] [-p tcp_port] [-m] [-t]
 	-d ser_nr   default:first	serial number of the desired RTL-SDR
 	-g <dB>     default:20  	tuner gain in dB
-	-b          default:off 	Enable bias-tee (+4.7 V on RTL-SDR Blog V3/V4)
+	-b          default:off 	Enable bias-tee (+4.5 V)
 	-p port     default:5556	ZeroMQ publisher port
 	-m          default:off 	Enable monitor mode (print received frames to stdout)
 	-t          default:off 	Use system clock as the timebase (beware of NTP jumps)
 ```
 
-## Future plans (some sort of a roadmap)
+## HackRF One or RTL-SDR?
 
-- [x] Increase compatibilty with existing software by implementing an OpenStint-P3 bridge
+Initial results show 2-3 dB better performace with a HackRF One when compared to an RTL-SDR v4. Given the ~40 dB effective dynamic range of these devices, this is not noticable in practice (if it is, re-think the antenna setup). A HackRF One clone costs 2x more as an RTL-SDR v4 dongle; an original from Great Scott Gadgets is 6-7x more expensive.
+
+For permanent setups, prefer the HackRF One though. The RTL-SDR dongle heats up considerably. I would not put it into an enclosed electrical box, and I would not leave it exposed to sunshine neither. The HackRF board is much less dense, thermal management is not a problem there.
+
+## Future plans (or a lack of...)
+
+By merging the rtl-sdr support, my personal bucket list has ended:
+- [x] RSSI-based passing speed detection
+- [x] RSSI-based reliable passing point detection
+- [x] OpenStint-P3 bridge (decoder appears as a MyLaps decoder, use existing laptiming software)
 - [x] RTL-SDR support (inexpensive software defined radio)
 - [x] Adaptive equalization (compensate antenna non-idealities)
 
-**RC4 support is not pursued.** There are already multiple open-source transponder projects out there. One can order an assembled 2x10pcs OpenStint-compatible panel from JLCPCB for less than $100, including taxes and shipping. For a cost of a single brand-name transponder, a whole club can enjoy reliable laptiming. Then why bother decyphering a protocol which was designed to be and to remain closed?!?
+I'm personally not interrested in RC4 support, but PRs are welcome though. There are already multiple open-source transponder projects out there. One can order an assembled 2x10pcs OpenStint-compatible panel from JLCPCB for less than $100, including taxes and shipping. For a cost of a single brand-name transponder, a whole club can enjoy reliable laptiming. Then why bother decyphering a protocol which was designed to be and to remain closed?!?
 
 ## Contribution
 
