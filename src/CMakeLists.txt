@@ -21,6 +21,7 @@ set(OPENSTINT_BASE_SOURCES
     transponder.cpp
     passing.cpp
     counters.cpp
+    commons.cpp
 )
 
 # Required dependencies
