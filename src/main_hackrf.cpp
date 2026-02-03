@@ -1,32 +1,17 @@
+#include <atomic>
+#include <chrono>
+#include <complex>
 #include <csignal>
 #include <cstdint>
 #include <cstdio>
 #include <cstdlib>
-#include <cstring>
-#include <format>
-#include <string>
-#include <iomanip>
-#include <cmath>
-#include <unistd.h>
-#include <atomic>
 #include <iostream>
+#include <string>
 #include <thread>
-#include <chrono>
-#include <complex>
-#include <algorithm>
-#include <numeric>
-#include <functional>
-#include <algorithm>
-#include <vector>
 
-#include "complex_cast.hpp"
 #include "commons.hpp"
 
-#include <zmq.hpp>
-#include <zmq_addon.hpp>
-
 #include <libhackrf/hackrf.h>
-#include <liquid/liquid.h>
 
 
 static hackrf_device* device = nullptr;

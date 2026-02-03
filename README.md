@@ -22,14 +22,14 @@ Check out the [track setup tutorial](docs/setup-tutorial.md) to get started. To 
 You have compile it from source. Install its dependencies first:
 
 ```shell
-sudo apt-get install hackrf libhackrf libhackrf-dev libliquid libliquid-dev cppzmq cppzmq-dev libfec0 libfec-dev
+sudo apt-get install hackrf libhackrf libhackrf-dev librtlsdr-dev libliquid libliquid-dev libzmq3-dev cppzmq-dev libfec0 libfec-dev
 ```
 
 Then checkout this repo, and build with cmake/make (`Release` build enables `-O3` compiler flag, improves performance significantly):
 ```shell
 cmake -DCMAKE_BUILD_TYPE=Release .
 make
-./src/openstint
+./src/openstint_hackrf   # or ./src/openstint_rtlsdr
 ```
 
 Vehicle passings are printed to `stdout` and published with ZeroMQ at `:5556`. The easiest method for testing with real transponders is with a *near-field magnetic probe* (sub-$10 stuff, search on ebay/aliexpress or see [Dave Jones DIY one](https://youtu.be/2xy3Hm1_ZqI?si=vmh87UB20cV0W4xt)).
@@ -50,15 +50,31 @@ Find some built-in integrations in the `integrations/` directory. Two notable ar
 
 ## Command line arguments
 
+### HackRF
+
 ```
-openstint -h
-Usage: openstint [-d ser_nr] [-p tcp_port] [-l <0..40>] [-v <0..62>] [-a] [-b] [-m] [-t]
-	-d ser_nr   default:first   serial number of the desired HackRF
-	-p port     default:5556	ZeroMQ publisher port
+openstint_hackrf -h
+Usage: openstint_hackrf [-d ser_nr] [-l <0..40>] [-v <0..62>] [-a] [-b] [-p tcp_port] [-m] [-t]
+	-d ser_nr   default:first	serial number of the desired HackRF
 	-l <0..40>  default:24  	LNA gain (rf signal amplifier; valid values: 0/8/16/24/32/40)
 	-v <0..62>  default:24  	VGA gain (baseband signal amplifier, steps of 2)
 	-a          default:off 	Enable preamp (+13 dB to input RF signal)
 	-b          default:off 	Enable bias-tee (+3.3 V, 50 mA max)
+	-p port     default:5556	ZeroMQ publisher port
+	-m          default:off 	Enable monitor mode (print received frames to stdout)
+	-t          default:off 	Use system clock as the timebase (beware of NTP jumps)
+```
+
+### RTL-SDR
+
+```
+openstint_rtlsdr -h
+Usage: openstint_rtlsdr [-d ser_nr] [-g <gain_dB>] [-D] [-b] [-p tcp_port] [-m] [-t]
+	-d ser_nr   default:first	serial number of the desired RTL-SDR
+	-g <dB>     default:40  	tuner gain in dB
+	-D          default:off 	Enable direct sampling (Q-branch, for non-V4 dongles at HF)
+	-b          default:off 	Enable bias-tee (+4.7 V on RTL-SDR Blog V3/V4)
+	-p port     default:5556	ZeroMQ publisher port
 	-m          default:off 	Enable monitor mode (print received frames to stdout)
 	-t          default:off 	Use system clock as the timebase (beware of NTP jumps)
 ```
@@ -66,7 +82,7 @@ Usage: openstint [-d ser_nr] [-p tcp_port] [-l <0..40>] [-v <0..62>] [-a] [-b] [
 ## Future plans (some sort of a roadmap)
 
 - [x] Increase compatibilty with existing software by implementing an OpenStint-P3 bridge
-- [ ] RTL-SDR support (inexpensive software defined radio)
+- [x] RTL-SDR support (inexpensive software defined radio)
 - [x] Adaptive equalization (compensate antenna non-idealities)
 
 **RC4 support is not pursued.** There are already multiple open-source transponder projects out there. One can order an assembled 2x10pcs OpenStint-compatible panel from JLCPCB for less than $100, including taxes and shipping. For a cost of a single brand-name transponder, a whole club can enjoy reliable laptiming. Then why bother decyphering a protocol which was designed to be and to remain closed?!?
