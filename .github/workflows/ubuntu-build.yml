@@ -34,6 +34,7 @@ jobs:
           libzmq3-dev \
           cppzmq-dev \
           libhackrf-dev \
+          librtlsdr-dev \
           libliquid-dev \
           libfec0 \
           libfec-dev
@@ -53,7 +54,9 @@ jobs:
         cmake -G "Ninja" -DCMAKE_BUILD_TYPE=Release ..
         ninja
 
-    - name: Verify binary
+    - name: Verify binaries
       run: |
-        ./build/src/openstint --help || true
-        ldd ./build/src/openstint
+        ./build/src/openstint_hackrf -h || true
+        ldd ./build/src/openstint_hackrf
+        ./build/src/openstint_rtlsdr -h || true
+        ldd ./build/src/openstint_rtlsdr

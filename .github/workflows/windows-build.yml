@@ -27,6 +27,7 @@ jobs:
           mingw-w64-x86_64-zeromq
           mingw-w64-x86_64-cppzmq
           mingw-w64-x86_64-hackrf
+          mingw-w64-x86_64-rtl-sdr
           git
           make
           autoconf
@@ -77,13 +78,14 @@ jobs:
         pyinstaller --onefile --name bridge-p3 --hidden-import=zmq --hidden-import=tornado integrations/bridge-p3.py
         pyinstaller --onefile --name bridge-zround --hidden-import=zmq --hidden-import=tornado integrations/bridge-zround.py
 
-    - name: Package binary
+    - name: Package binaries
       shell: msys2 {0}
       run: |
         mkdir openstint-windows-x64
-        cp build/src/openstint.exe openstint-windows-x64/
-        # Copy required DLLs
-        ldd build/src/openstint.exe | grep mingw64 | awk '{print $3}' | xargs -I{} cp {} openstint-windows-x64/ || true
+        cp build/src/openstint_hackrf.exe openstint-windows-x64/
+        cp build/src/openstint_rtlsdr.exe openstint-windows-x64/
+        # Copy required DLLs (union of both binaries)
+        ldd build/src/openstint_hackrf.exe build/src/openstint_rtlsdr.exe | grep mingw64 | awk '{print $3}' | sort -u | xargs -I{} cp {} openstint-windows-x64/ || true
         cp dist/bridge-p3.exe openstint-windows-x64/
         cp dist/bridge-zround.exe openstint-windows-x64/
         cp README.md openstint-windows-x64/
