@@ -37,7 +37,7 @@ if(USE_HACKRF)
     find_path(HACKRF_INCLUDE_DIR NAMES libhackrf/hackrf.h)
     find_library(HACKRF_LIB REQUIRED NAMES hackrf)
 
-    add_executable(openstint_hackrf main.cpp ${OPENSTINT_BASE_SOURCES})
+    add_executable(openstint_hackrf main_hackrf.cpp ${OPENSTINT_BASE_SOURCES})
     target_compile_definitions(openstint_hackrf PRIVATE SAMPLES_PER_SYMBOL=${SAMPLES_PER_SYMBOL})
     target_compile_options(openstint_hackrf PRIVATE -I ".")
     target_include_directories(openstint_hackrf PRIVATE ${LIQUID_INCLUDE_DIR} ${HACKRF_INCLUDE_DIR} ${cppzmq_INCLUDE_DIR} ${FEC_INCLUDE_DIR})
@@ -53,16 +53,14 @@ endif()
 if(USE_RTLSDR)
     find_path(RTLSDR_INCLUDE_DIR NAMES rtl-sdr.h)
     find_library(RTLSDR_LIB REQUIRED NAMES rtlsdr)
-    find_path(HACKRF_INCLUDE_DIR NAMES libhackrf/hackrf.h)
-    find_library(HACKRF_LIB REQUIRED NAMES hackrf)
 
-    add_executable(openstint_rtlsdr main.cpp ${OPENSTINT_BASE_SOURCES})
+    add_executable(openstint_rtlsdr main_rtlsdr.cpp ${OPENSTINT_BASE_SOURCES})
     target_compile_definitions(openstint_rtlsdr PRIVATE SAMPLES_PER_SYMBOL=2)
     target_compile_options(openstint_rtlsdr PRIVATE -I ".")
-    target_include_directories(openstint_rtlsdr PRIVATE ${LIQUID_INCLUDE_DIR} ${HACKRF_INCLUDE_DIR} ${cppzmq_INCLUDE_DIR} ${FEC_INCLUDE_DIR})
+    target_include_directories(openstint_rtlsdr PRIVATE ${LIQUID_INCLUDE_DIR} ${RTLSDR_INCLUDE_DIR} ${cppzmq_INCLUDE_DIR} ${FEC_INCLUDE_DIR})
     target_link_libraries(openstint_rtlsdr
       ${LIQUID_LIB}
-      ${HACKRF_LIB}
+      ${RTLSDR_LIB}
       ${FEC_LIB}
       cppzmq
       m
