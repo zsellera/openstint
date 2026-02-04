@@ -8,8 +8,6 @@ OpenStint is a software defined radio (SDR) based laptiming decoder, using eithe
 * :wrench: Off-the-shelf components, no electronic skills are required (HackRF One, RTL-SDR v4).
 * :checkered_flag: Tested with [ZRound](https://www.zround.com/index.php/download-mananger/) and [LiveTime Scoring](https://www.livetimescoring.com/)
 * :chart_with_downwards_trend: Low resource requirements: runs even on a Rapsberry Pi 3 Model B+
-* :stopwatch: Precise passing time detection
-* :car: Passing speed detection
 * :brain: Adaptive filters enchance reception quality
 
 **Download:** [Windows users](docs/setup-tutorial-windows.md) can download precompiled binaries; the rest of us have to compile from source.
@@ -85,17 +83,6 @@ Usage: openstint_rtlsdr [-d ser_nr] [-g <gain_dB>] [-D] [-b] [-p tcp_port] [-m] 
 Initial results show 2-3 dB better performace with a HackRF One when compared to an RTL-SDR v4. Given the ~40 dB effective dynamic range of these devices, this is not noticable in practice (if it is, re-think the antenna setup). A HackRF One clone costs 2x more as an RTL-SDR v4 dongle; an original from Great Scott Gadgets is 6-7x more expensive.
 
 For permanent setups, prefer the HackRF One though. The RTL-SDR dongle heats up considerably. I would not put it into an enclosed electrical box, and I would not leave it exposed to sunshine neither. The HackRF board is much less dense, thermal management is not a problem there.
-
-## Future plans (or a lack of...)
-
-By merging the rtl-sdr support, my personal bucket list has ended:
-- [x] RSSI-based passing speed detection
-- [x] RSSI-based reliable passing point detection
-- [x] OpenStint-P3 bridge (decoder appears as a MyLaps decoder, use existing laptiming software)
-- [x] RTL-SDR support (inexpensive software defined radio)
-- [x] Adaptive equalization (compensate antenna non-idealities)
-
-I'm personally not interrested in RC4 support, but PRs are welcome though. There are already multiple open-source transponder projects out there. One can order an assembled 2x10pcs OpenStint-compatible panel from JLCPCB for less than $100, including taxes and shipping. For a cost of a single brand-name transponder, a whole club can enjoy reliable laptiming. Then why bother decyphering a protocol which was designed to be and to remain closed?!?
 
 ## Contribution
 
