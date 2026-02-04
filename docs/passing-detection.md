@@ -39,8 +39,6 @@ In this arrangement fieldlines cancel each other out, and detection is theoretic
 
 ## Preliminary results
 
-In an artificial environment, the following double tranponder arrangement was able to:
-* Reliably tell if the vehicle passed the loop forward or reverse (the transponders were placed ~15 mm from each other, and one transponder was detected a few miliseconds earlier than the other)
-* Produce passing times within 2 miliseconds.
+In an artificial environment, the following double tranponder arrangement was able to reliably tell if the vehicle passed the loop forward or reverse (the transponders were placed ~15 mm from each other, and one transponder was detected a few miliseconds earlier than the other)
 
 <img width="640" alt="image" src="passing-detection/transponder-layout.png" />

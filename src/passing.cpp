@@ -183,12 +183,12 @@ void rssi_waveform_detect_peaks_valleys(
     // normalize detection timestamp to [0,1] interval
     uint64_t tmin = detections.front().timestamp;
     uint64_t tmax = detections.back().timestamp;
-    float duration = static_cast<float>(tmax - tmin);
+    float tdiff = static_cast<float>(tmax - tmin);
     std::vector<float> t_sample(detections.size());
     std::transform(
         detections.begin(), detections.end(),
         t_sample.begin(),
-        [tmin, duration](const Detection d) { return static_cast<float>(d.timestamp - tmin) / duration; }
+        [tmin, tdiff](const Detection d) { return static_cast<float>(d.timestamp - tmin) / tdiff; }
     );
 
     // Create grid of 128+1 points in [0,1]
@@ -214,7 +214,7 @@ void rssi_waveform_detect_peaks_valleys(
     std::transform(
         rssi_peaks.begin(), rssi_peaks.end(),
         std::back_inserter(peaks),
-        [tmin, duration](const Peak p) -> InflectionPoint { return {tmin + static_cast<uint64_t>(p.index * duration / 128.0f), p.value }; }
+        [tmin, tdiff](const Peak p) -> InflectionPoint { return {tmin + static_cast<uint64_t>(p.index * tdiff / 128.0f), p.value }; }
     );
 
     // find valleys in the resampled data, higher prominence
@@ -223,14 +223,13 @@ void rssi_waveform_detect_peaks_valleys(
     std::transform(
         rssi_valleys.begin(), rssi_valleys.end(),
         std::back_inserter(valleys),
-        [tmin, duration](const Peak p) -> InflectionPoint { return {tmin + static_cast<uint64_t>(p.index * duration / 128.0f), p.value}; }
+        [tmin, tdiff](const Peak p) -> InflectionPoint { return {tmin + static_cast<uint64_t>(p.index * tdiff / 128.0f), p.value}; }
     );
 }
 
 struct PassingPoint {
     uint64_t weighted_timestamp;
     float max_rssi;
-    uint64_t passing_duration;
 };
 
 // Calculate RSSI-weighted average timestamp for detections
@@ -247,7 +246,7 @@ PassingPoint weigthed_passing(const std::deque<Detection>& detections, float max
     }
 
     uint64_t weighted_timestamp = static_cast<uint64_t>(weighted_sum / weight_total);
-    return {weighted_timestamp, max_rssi, 0};
+    return {weighted_timestamp, max_rssi};
 }
 
 PassingPoint compute_passing_point(const std::deque<Detection>& detections) {
@@ -271,12 +270,11 @@ PassingPoint compute_passing_point(const std::deque<Detection>& detections) {
     rssi_waveform_detect_peaks_valleys(detections, peaks, valleys);
 
     if (peaks.size() == 1) {
-        return {peaks[0].timestamp, max_rssi, 0};
+        return {peaks[0].timestamp, max_rssi};
     } else if (peaks.size() >= 2 && (valleys.size() == 2 || valleys.size()==3)) {
         return {
             peaks.size() == 3 ? peaks[1].timestamp : ( (peaks[0].timestamp + peaks.back().timestamp) / 2 ),
-            max_rssi,
-            valleys.back().timestamp - valleys.front().timestamp
+            max_rssi
         };
     } else if (peaks.size() == 2) { // just peaks, no valleys
         // if both peaks are similar in size, let's assume a transponder
@@ -284,8 +282,7 @@ PassingPoint compute_passing_point(const std::deque<Detection>& detections) {
         // if the peaks are of different signal levels, pass duration is not available
         return {
             (peaks[0].timestamp + peaks[1].timestamp) / 2, 
-            max_rssi,
-            abs(peaks[0].rssi - peaks[1].rssi) < 3.0f ? (peaks[1].timestamp - peaks[0].timestamp) : 0
+            max_rssi
         };
     } else {
         return weigthed_passing(detections, max_rssi);
@@ -299,8 +296,7 @@ Passing create_passing(TransponderKey transponder_key, const std::deque<Detectio
         .transponder_type = transponder_key.first,
         .transponder_id = transponder_key.second,
         .rssi = stats.max_rssi,
-        .hits = detections.size(),
-        .duration = stats.passing_duration
+        .hits = detections.size()
     };
     return p;
 }
