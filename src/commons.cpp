@@ -56,12 +56,12 @@ bool process_frame(Frame* frame) {
         }
         break;
         case TransponderType::Legacy:
-            if (decode_legacy(softbits, &transponder_id)) {
-                if (transponder_id < 10000000) { // extra check (7-digit max)
-                    passing_detector.append(frame, transponder_id);
-                }
-                return true;
+        if (decode_legacy(softbits, &transponder_id)) {
+            if (transponder_id < 10000000) { // extra check (7-digit max)
+                passing_detector.append(frame, transponder_id);
             }
+            return true;
+        }
         break;
     }
     return false;

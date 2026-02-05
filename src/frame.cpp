@@ -88,11 +88,15 @@ const uint8_t* Frame::bits() {
 
 float Frame::rssi() const {
     // symbol sync filter also cause the signal to increase by samples_per_symbol times
-    return 20.0f * std::log10(symbol_magnitude) - 20.f * std::log10(ADC_FULL_SCALE) - 20.0f * std::log10(SAMPLES_PER_SYMBOL) + 6.02f;
+    return 20.0f * std::log10(symbol_magnitude()) - 20.f * std::log10(ADC_FULL_SCALE) - 20.0f * std::log10(SAMPLES_PER_SYMBOL) + 6.02f;
 }
 
 float Frame::evm() const {
     return evm_sum / (payload_size + SymbolReader::filter_delay);
+}
+
+float Frame::symbol_magnitude() const {
+    return 1.0f / symbol_scale;
 }
 
 std::ostream& operator <<(std::ostream& os, const Frame& f) {
@@ -115,8 +119,8 @@ std::ostream& operator <<(std::ostream& os, const Frame& f) {
               << " T:" << f.timestamp
               << " RSSI:" << f.rssi()
               << " EVM:" << f.evm()
-              << " PHASE:" << f.symbol_phase
-              << " MAG:" << f.symbol_magnitude
+              << " FREQ:" << (f.frequency / (2.0f * 3.14) * 1250000.0f)
+              << " MAG:" << f.symbol_magnitude()
               << " SYMSYNC:[" << f.symsync_sym << "," << f.symsync_bank << "]"
               << " SYMBOLS:[" << ssym.str() << "]"
               << " SOFTBITS:[" << sbits.str() << "]";
@@ -208,6 +212,7 @@ SymbolReader::SymbolReader() {
         40.0f               // filter rolloff
     );
     sym_eq = eqlms_cccf_create(NULL, 3); // a very quick EQ
+    eqlms_cccf_set_bw(sym_eq, 1.0f/16);
     bpsk_modem = modemcf_create(LIQUID_MODEM_BPSK);
 }
 
@@ -231,6 +236,15 @@ void SymbolReader::read_single(Frame *frame, const std::complex<float> offset, c
             firpfb_crcf_execute(sym_pfb, frame->symsync_bank, &symbol);
 
             symbol *= frame->correction;
+
+            // digital costas loop
+            float error = symbol.real() * symbol.imag(); // ~phase
+            frame->frequency += 0.0025f * error;
+            frame->phase += frame->frequency + 0.05f * error;
+            frame->correction = std::polar(
+                frame->symbol_scale,
+                -(frame->phase)
+            );
 
             // equalization
             eqlms_cccf_push(sym_eq, symbol);
@@ -293,22 +307,24 @@ void SymbolReader::train_preamble(Frame *frame, std::complex<float> offset, cons
     // update frame
     frame->symsync_sym = sampling_point / num_filters;
     frame->symsync_bank = sampling_point % num_filters;
-    frame->symbol_magnitude = std::sqrt((*max_magnitude) / static_cast<float>(preamble_length));
-    frame->symbol_phase = std::arg(rotated2x) / 2.0f;
-    frame->correction = std::polar(1.0f / frame->symbol_magnitude, -frame->symbol_phase);
+    frame->symbol_scale = 1.0f / std::sqrt((*max_magnitude) / static_cast<float>(preamble_length));
+    frame->phase = std::arg(rotated2x) / 2.0f;
+    frame->correction = std::polar(frame->symbol_scale, -frame->phase);
 
     // train EQ on preamble
-    for (int i=0; i<preamble_length && frame->symbol_magnitude>EQLMS_TRAINING_THRESHOLD; i++) {
-        std::complex<float> symbol = resampled[i*16 + sampling_point] * frame->correction;
-        std::complex<float> d_hat, d_prime;
-        unsigned int bit; // bit-level decoding
+    if ((1.0f / frame->symbol_scale) > EQLMS_TRAINING_THRESHOLD) {
+        for (int i=0; i<preamble_length; i++) {
+            std::complex<float> symbol = resampled[i*16 + sampling_point] * frame->correction;
+            std::complex<float> d_hat, d_prime;
+            unsigned int bit; // bit-level decoding
 
-        eqlms_cccf_push(sym_eq, symbol);
-        if (i >= filter_delay) {
-            eqlms_cccf_execute(sym_eq, &d_hat);
-            modemcf_demodulate(bpsk_modem, d_hat, &bit);
-            modemcf_get_demodulator_sample(bpsk_modem, &d_prime);
-            eqlms_cccf_step(sym_eq, d_prime, d_hat);
+            eqlms_cccf_push(sym_eq, symbol);
+            if (i >= filter_delay) {
+                eqlms_cccf_execute(sym_eq, &d_hat);
+                modemcf_demodulate(bpsk_modem, d_hat, &bit);
+                modemcf_get_demodulator_sample(bpsk_modem, &d_prime);
+                eqlms_cccf_step(sym_eq, d_prime, d_hat);
+            }
         }
     }
 

@@ -39,8 +39,9 @@ struct Frame {
     // what is the optimal sampling point when reading
     int symsync_sym = 0;
     int symsync_bank = 0;
-    float symbol_magnitude = 0;
-    float symbol_phase = 0;
+    float symbol_scale = 0;
+    float phase = 0;
+    float frequency = 0; // radian/symbol
     std::complex<float> correction = {1.0f, 0.0f}; // phase & magnitude correction
     
     Frame();
@@ -49,6 +50,7 @@ struct Frame {
     const uint8_t* bits();
     float rssi() const;
     float evm() const;
+    float symbol_magnitude() const;
 };
 
 std::ostream& operator <<(std::ostream& os, const Frame& f);
@@ -59,6 +61,7 @@ class FrameDetector {
     // preamble matching
     static inline const Preamble<uint16_t> p_openstint { transponder_props(TransponderType::OpenStint).bpsk_preamble };
     static inline const Preamble<uint16_t> p_legacy { transponder_props(TransponderType::Legacy).bpsk_preamble };
+
     CircBuff<uint16_t> buffers[samples_per_symbol];
     float threshold;
 
