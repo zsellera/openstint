@@ -103,5 +103,5 @@ int decode_legacy(const uint8_t *softbits, uint32_t *transponder_id) {
 
     // the last byte must be zero (error check)
     // status messages have the lowest 3 bits non-zero
-    return (trail == 0) && ((status & 0x07)  == 0);
+    return (trail == 0) && ((status & 0x07) == 0);
 }
