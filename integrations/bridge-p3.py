@@ -12,6 +12,13 @@ import sys
 if sys.platform == 'win32':
     asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
 
+# SOURCES:
+# https://github.com/vmindru/ambp3client/tree/master
+# https://www.hobbytalk.com/threads/amb-protocol.73738/page-2?nested_view=1
+# ARCHIVED:
+# https://web.archive.org/web/20260206102959/https://www.hobbytalk.com/threads/amb-protocol.73738/page-3
+# https://web.archive.org/web/20260206103434/https://github.com/vmindru/ambp3client/blob/master/AmbP3/records.py
+
 FORMAT_CHARS = {1: 'B', 2: 'H', 4: 'L', 8: 'Q'}
 OPENSTINT_RSSI_FULL_SCALE = 1.76 + 8 * 6.02
 

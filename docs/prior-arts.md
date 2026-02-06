@@ -16,7 +16,7 @@ Has a simplified transponder schematics
 https://patents.google.com/patent/US3795907A/en
 
 Same:
-https://patents.google.com/patent/US5696481A/en - Process for recording intermediate and final times in sporting events (1996)
+https://patents.google.com/patent/US5696481A/en - Process for recording intermediate and final times in sporting events (1991), passive transponder
 https://patents.google.com/patent/US4999604A/en (1989)
 
 ### Timing apparatus and system (1974)
@@ -48,9 +48,11 @@ https://patents.google.com/patent/US4074117A - 1976, Grand Prix
 
 ### System for identifying and displaying data transmitted by way of unique identifying frequencies from multiple vehicles (1982)
 
+Lay down two antennae in known proximity, connect them via splitter/combiner to a single coax, and use a single decoder to detect passing speeds as well.
+
 > A system for detecting and indicating relative location and speed of a number of vehicles on a closed racetrack where each vehicle generates a unique radio frequency identification signal
 
-FIG 13!!!
+FIG 13 - passing waveform
 
 https://patents.google.com/patent/US4449114A/en
 
@@ -68,6 +70,8 @@ https://patents.google.com/patent/US4274076A/en (1979)
 > timing apparatus for determining precisely when vehicles pass over a particular line
 
 > FIG. 4 is a graph of signal strength versus time for a transmitter passing over a receiving loop of the antenna array;
+
+It describes a probably quite reliable passing point detector: find the time when the signal strength hit a certain point the first time, then find when it left the same point the last time. Passing time is right in the middle.
 
 https://patents.google.com/patent/US5091895A/en
 
@@ -103,7 +107,7 @@ Nevertheless, it describes an active transponder and a loop antenna. Ohh: the tr
 https://patents.google.com/patent/US6870466B2/en
 
 ### System for determining a position of a moving transponder (MyLaps, 2003)
-It seem like the same as the 1969 patent, with some trivial additions:
+Similar arrangement as US3546696A (1969), with some additions:
 * transponder emits in UHF range (digital communication)
 * ground-loop emits a unique conde encoded in the magnetic field
 
@@ -131,6 +135,18 @@ Doppler-shift based speed detection
 
 https://patents.google.com/patent/GB2376585A/en
 
+### Detecting the passing between a transmitter and a detector (2011)
+
+Passing time identified by phase transition in the emitted signal. Requires a transponder which align symbols to symbol rate.
+
+https://patents.google.com/patent/US20120087421
+
+### Determining the passing time of a moving transponder (2014, MyLaps)
+
+Solves the problem of passing point detection if the transponder is not parallel or perpendicular to the moving direction. Use two perpendicular transmit antennae and a single receive antenna. Active until 2034, but is a trivial modification of US4315242A (1980), so also likely invalid.
+
+https://patents.google.com/patent/EP3035298B9/en
+
 ### Method and apparatus for remote control vehicle identification (2005)
 
 LOL, a separate patent for RFID-based RC car laptimer :D :D :D
@@ -149,6 +165,17 @@ https://patents.google.com/patent/US4752764A/en
 Near field, BPSK, CRC; the full package...
 
 https://patents.google.com/patent/US7777610B2/en
+
+
+## OTHERS
+
+### Method and system for detecting an event on a sports track
+
+detecting malfunctioning of time monitoring equipment used for time monitoring at active sports events performed on a sports track
+
+"at least two track segments across a width of the sports track"
+
+https://patents.google.com/patent/EP2646988B1
 
 
 ### Non-real time
