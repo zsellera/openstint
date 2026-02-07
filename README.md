@@ -8,6 +8,8 @@ OpenStint is a software defined radio (SDR) based laptiming decoder, using eithe
 * :wrench: Off-the-shelf components, no electronic skills are required (HackRF One, RTL-SDR v4).
 * :checkered_flag: Tested with [ZRound](https://www.zround.com/index.php/download-mananger/) and [LiveTime Scoring](https://www.livetimescoring.com/)
 * :chart_with_downwards_trend: Low resource requirements: runs even on a Rapsberry Pi 3 Model B+
+* :stopwatch: Precise passing time detection (based on signal strength)
+* :car: Passing speed detection (based on signal strength)
 * :brain: Adaptive filters enchance reception quality
 
 **Download:** [Windows users](docs/setup-tutorial-windows.md) can download precompiled binaries; the rest of us have to compile from source.
