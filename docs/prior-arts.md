@@ -58,7 +58,7 @@ https://patents.google.com/patent/US4449114A/en
 
 ### Device for determining the moment when competitors in a race are passing the finishing line (1980)
 
-Two perpendicular antennas, RSSI-based passing time detection. Practically a prior art to existing active patent (switching the role of transmit and receive antennas is trivial).
+Two perpendicular antennas receive, RSSI-based passing time detection.
 
 https://patents.google.com/patent/US4315242A/en
 
@@ -143,15 +143,11 @@ https://patents.google.com/patent/US20120087421
 
 ### Determining the passing time of a moving transponder (2014, MyLaps)
 
-Solves the problem of passing point detection if the transponder is not parallel or perpendicular to the moving direction. Use two perpendicular transmit antennae and a single receive antenna. Active until 2034, but is a trivial modification of US4315242A (1980), so also likely invalid.
+Solves the problem of passing point detection if the transponder is not parallel or perpendicular to the moving direction. Use two perpendicular transmit antennae and a single receive antenna. Active until 2034, but is an obvious modification of US4315242A (1980). Note, the 1980 patent claims:
+
+> signal received by one antenna is above a relatively high first threshold value and the signal received by the other antenna is below a relatively low second threshold value
 
 https://patents.google.com/patent/EP3035298B9/en
-
-### Method and apparatus for remote control vehicle identification (2005)
-
-LOL, a separate patent for RFID-based RC car laptimer :D :D :D
-
-https://patents.google.com/patent/US20060087454A1/en
 
 ### Electronic timing and recording apparatus (Kodak, 1986)
 
