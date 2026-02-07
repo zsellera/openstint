@@ -212,7 +212,7 @@ SymbolReader::SymbolReader() {
         40.0f               // filter rolloff
     );
     sym_eq = eqlms_cccf_create(NULL, 3); // a very quick EQ
-    eqlms_cccf_set_bw(sym_eq, 1.0f/16);
+    eqlms_cccf_set_bw(sym_eq, 1.0f/64);
     bpsk_modem = modemcf_create(LIQUID_MODEM_BPSK);
 }
 
