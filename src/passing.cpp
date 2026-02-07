@@ -230,6 +230,7 @@ void rssi_waveform_detect_peaks_valleys(
 struct PassingPoint {
     uint64_t weighted_timestamp;
     float max_rssi;
+    uint32_t duration;
 };
 
 // Calculate RSSI-weighted average timestamp for detections
@@ -246,7 +247,7 @@ PassingPoint weigthed_passing(const std::deque<Detection>& detections, float max
     }
 
     uint64_t weighted_timestamp = static_cast<uint64_t>(weighted_sum / weight_total);
-    return {weighted_timestamp, max_rssi};
+    return {weighted_timestamp, max_rssi, 0};
 }
 
 PassingPoint compute_passing_point(const std::deque<Detection>& detections) {
@@ -270,11 +271,13 @@ PassingPoint compute_passing_point(const std::deque<Detection>& detections) {
     rssi_waveform_detect_peaks_valleys(detections, peaks, valleys);
 
     if (peaks.size() == 1) {
-        return {peaks[0].timestamp, max_rssi};
+        // low signal strength or bad transponder placement
+        return {peaks[0].timestamp, max_rssi, 0};
     } else if (peaks.size() >= 2 && (valleys.size() == 2 || valleys.size()==3)) {
         return {
             peaks.size() == 3 ? peaks[1].timestamp : ( (peaks[0].timestamp + peaks.back().timestamp) / 2 ),
-            max_rssi
+            max_rssi,
+            static_cast<uint32_t>(valleys.back().timestamp - valleys.front().timestamp)
         };
     } else if (peaks.size() == 2) { // just peaks, no valleys
         // if both peaks are similar in size, let's assume a transponder
@@ -282,7 +285,8 @@ PassingPoint compute_passing_point(const std::deque<Detection>& detections) {
         // if the peaks are of different signal levels, pass duration is not available
         return {
             (peaks[0].timestamp + peaks[1].timestamp) / 2, 
-            max_rssi
+            max_rssi,
+            abs(peaks[0].rssi - peaks[1].rssi) < 3.0f ? static_cast<uint32_t>(peaks[1].timestamp - peaks[0].timestamp) : 0
         };
     } else {
         return weigthed_passing(detections, max_rssi);
@@ -296,7 +300,8 @@ Passing create_passing(TransponderKey transponder_key, const std::deque<Detectio
         .transponder_type = transponder_key.first,
         .transponder_id = transponder_key.second,
         .rssi = stats.max_rssi,
-        .hits = detections.size()
+        .hits = detections.size(),
+        .duration = stats.duration
     };
     return p;
 }
