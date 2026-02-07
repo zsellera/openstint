@@ -2,6 +2,7 @@
 
 * https://nextleveltiming.com/
 * https://github.com/condac/RCtajm
+* https://www.rc-timing.com/
 * https://www.rctiming.com/
 * https://www.race-control.de/
 * https://www.rc-timing.com/
