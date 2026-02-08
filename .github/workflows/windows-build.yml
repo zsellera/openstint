@@ -72,10 +72,9 @@ jobs:
       with:
         python-version: '3.12'
 
-    - name: Build bridge-p3.exe
+    - name: Build bridge .exe
       run: |
         pip install pyzmq tornado pyinstaller
-        pyinstaller --onefile --name bridge-p3 --hidden-import=zmq --hidden-import=tornado integrations/bridge-p3.py
         pyinstaller --onefile --name bridge-zround --hidden-import=zmq --hidden-import=tornado integrations/bridge-zround.py
 
     - name: Package binaries
@@ -86,7 +85,6 @@ jobs:
         cp build/src/openstint_rtlsdr.exe openstint-windows-x64/
         # Copy required DLLs (union of both binaries)
         ldd build/src/openstint_hackrf.exe build/src/openstint_rtlsdr.exe | grep mingw64 | awk '{print $3}' | sort -u | xargs -I{} cp {} openstint-windows-x64/ || true
-        cp dist/bridge-p3.exe openstint-windows-x64/
         cp dist/bridge-zround.exe openstint-windows-x64/
         cp README.md openstint-windows-x64/
         cp -r integrations openstint-windows-x64/

@@ -6,7 +6,7 @@ OpenStint is a software defined radio (SDR) based laptiming decoder, using eithe
 
 * :tada: Supports OpenStint transponder, as well as RC3/RC4Hybrid/MRT and other RC3-clones
 * :wrench: Off-the-shelf components, no electronic skills are required (HackRF One, RTL-SDR v4).
-* :checkered_flag: Tested with [ZRound](https://www.zround.com/index.php/download-mananger/) and [LiveTime Scoring](https://www.livetimescoring.com/)
+* :checkered_flag: Tested with [ZRound](https://www.zround.com/index.php/download-mananger/)
 * :chart_with_downwards_trend: Low resource requirements: runs even on a Rapsberry Pi 3 Model B+
 * :stopwatch: Precise passing time detection (based on signal strength)
 * :car: Passing speed detection (based on signal strength)
@@ -48,7 +48,7 @@ The primary method of 3rd-party integration with OpenStint is via ZeroMQ. The `o
 
 The [decoder protocol](docs/decoder-protocol.md) is documented under the `docs/` directory.
 
-Find some built-in integrations in the `integrations/` directory. Two notable are `bridge-zround.py` and `bridge-p3.py`.
+Find some built-in integrations in the `integrations/` directory.
 
 ## Command line arguments
 
