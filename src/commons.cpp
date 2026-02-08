@@ -22,7 +22,7 @@ static zmq::context_t* zmq_context = nullptr;
 static zmq::socket_t* publisher = nullptr;
 
 static enum FrameParseMode { FRAME_SEEK, FRAME_FOUND } frame_parse_mode = FRAME_SEEK;
-static FrameDetector frame_detector(0.84f);
+static FrameDetector frame_detector(0.84f - 0.01f*SAMPLES_PER_SYMBOL);
 static SymbolReader symbol_reader;
 static Frame frame;
 static PassingDetector passing_detector;

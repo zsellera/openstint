@@ -13,7 +13,7 @@
 #define FRAME_MAX_SYMBOL_SPACE 128
 #define PREAMBLE_MAX_BIT_ERRORS 2
 #define STATS_UPDATE_THRESHOLD (1<<12)
-#define EQLMS_TRAINING_THRESHOLD (8*SAMPLES_PER_SYMBOL)
+#define EQLMS_TRAINING_THRESHOLD 16.0f
 
 Frame::Frame() {
     preamble_size = payload_size = 0;
