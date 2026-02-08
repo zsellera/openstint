@@ -59,7 +59,7 @@ P 1658197696 AMB 3616557 4.24 30 89
 * `decoder_timestamp` is a milliseconds-resolution [steady clock](https://en.cppreference.com/w/cpp/chrono/steady_clock.html) epoch, counting from the startup of the decoder process. As such, it is insensitive to updates to system time (NTP syncs). Treat it as a monotonic counter. When the decoder process restarts, the counter restarts as well.
 * `transponder_type` defines if the passing is from an OpenStint (`OPN`) or legacy/RC3 transponder (`AMB`). The [OpenStint transponder protocol](transponder-protocol.md) is an error-corrected, highly sensitive, well-documented transponder protocol, and it is the preferred protocol of this project. The legacy/RC3 is there to provide backwards-compatibility with existing transponders (MyLaps/MRT/Vostok/etc.). RC4 support is not actively pursued.
 * `transponder_id` is a non-negative number. Both OpenStint and AMB/RC3 defines it as "up to 7 digits", but future transponder options might increase it's width. With OpenStint transponders, even single-digit (ie. `0`) transponder ids are possible.
-* `RSSI` is the maximum "**R**elative **S**ignal **S**trenght **I**ndicator. It is expressed in terms of power, in decibel scale. The reference point (0 dB) is the maximum power the radio can receive, and every measured value is negative. It is calculated from (an approximation of) RMS value. As such, the value `-3.0` means the full scale is used, larger values indicate clipping (decrease amplifier gains). Reliable reception is possible at 3 dB above noise floor (repored in status messages).
+* `RSSI` is the maximum "**R**elative **S**ignal **S**trenght **I**ndicator. It is expressed in terms of power, in decibel scale. The reference point (0 dB) is the maximum power the radio can receive, and every measured value *should be* negative (high-power, clipped signals can present as positive values though). It is calculated from (an approximation of) RMS value. As such, the value `-3.0` means the full scale is used, larger values indicate clipping (decrease amplifier gains). Reliable reception is possible at 3 dB above noise floor (repored in status messages).
 * `hit_count` tells about the number of successfully decoded tranponder messages during the passing. OpenStint transponders should transmit a message on average every 1.5 ms. RC4-hybrid transponders send at a similar rate, but only every ~4th is an RC3 message (which is the supported message format).
 * `pass_duration` is an estimate of the transponder being spent inside the loop, in miliseconds. It is usable for speed detection: 90 ms inside a 30 cm wide loop means 0.3/0.09=3.33 m/s or 12 km/h. Pass duration estimate is only available when the transponder's coil is parallel to the pickup loop. If detection is not possible, `0` value is reported.
 
@@ -96,10 +96,10 @@ S <decoder_timestamp:uint64> <noise_power:float> <dc_offset_magnitude:float> <fr
 
 Example:
 ```
-S 1792039754 1.018744 5.08 0 0
-S 1792040804 1.2333267 5.08 77 52
-S 1792041851 0.9898376 5.22 184 135
-S 1792042901 1.0032545 5.08 0 0
+S 1792039754 -41.018744 5.08 0 0
+S 1792040804 -41.2333267 5.08 77 52
+S 1792041851 -40.9898376 5.22 184 135
+S 1792042901 -41.0032545 5.08 0 0
 ```
 
 * `decoder_timestamp` is the same monotoic clock as used in other messages.
@@ -124,7 +124,7 @@ However, the crystal clock in your host computer has to maintain a *system time*
 
 All the factors above pose a problem in non-F1 environments as well. To avoid these, the openstint decoder uses the host CPUs tick counter (insensitive to wall clock problems).
 
-When it comes to sector timing, we no longer measure an interval on the same clock though, but the difference of two, possibly free-running clocks. In this setup, drift errors do add up. As such, you might have to enable the `-t` flag, so the laptiming software sees a syncronized time across the various decoders (and leave the problem of time synchronization to the operating system).
+When it comes to sector timing, we no longer measure an interval on the same clock though, but the difference of two, possibly free-running clocks. In this setup, drift errors do add up. As such, you might have to enable the `-t` flag, so the laptiming software sees a *syncronized time* across the various decoders (and leave the problem of time synchronization to the operating system).
 
 To address the issues introduced by time syncronization, the errors must be decreased to an acceptable level. There are several ways to achieve this, but each of them is bigger than the scope of this document. Two notable solutions are though:
 
