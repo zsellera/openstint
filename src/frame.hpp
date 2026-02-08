@@ -14,7 +14,7 @@
 
 #include <liquid/liquid.h>
 
-#define ADC_FULL_SCALE 127.0f
+#define ADC_FULL_SCALE 179.0f // 127*1.41 (max vector magnitude of the two adcs)
 
 #ifndef SAMPLES_PER_SYMBOL
 #define SAMPLES_PER_SYMBOL 4
@@ -90,7 +90,7 @@ class SymbolReader {
 public:
     static constexpr int samples_per_symbol = SAMPLES_PER_SYMBOL;
     static constexpr int filter_delay = 4;
-    static constexpr int num_filters = 16 / samples_per_symbol;
+    static constexpr int num_filters = 16 / samples_per_symbol; // upsampling factor
     static constexpr int preamble_length = 16;
     static constexpr int reserve_buffer_size = preamble_length * samples_per_symbol;
 

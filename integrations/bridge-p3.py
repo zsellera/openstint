@@ -20,7 +20,7 @@ if sys.platform == 'win32':
 # https://web.archive.org/web/20260206103434/https://github.com/vmindru/ambp3client/blob/master/AmbP3/records.py
 
 FORMAT_CHARS = {1: 'B', 2: 'H', 4: 'L', 8: 'Q'}
-OPENSTINT_RSSI_FULL_SCALE = 1.76 + 8 * 6.02
+OPENSTINT_RSSI_FULL_SCALE = 1.76 + 7 * 6.02 + 3.01
 
 def signal_strenght_converter(openstint_signal_level):
     return max(0, int((openstint_signal_level + OPENSTINT_RSSI_FULL_SCALE) * 10.0))

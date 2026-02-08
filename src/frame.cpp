@@ -87,8 +87,7 @@ const uint8_t* Frame::bits() {
 }
 
 float Frame::rssi() const {
-    // symbol sync filter also cause the signal to increase by samples_per_symbol times
-    return 20.0f * std::log10(symbol_magnitude()) - 20.f * std::log10(ADC_FULL_SCALE) - 20.0f * std::log10(SAMPLES_PER_SYMBOL) + 6.02f;
+    return 20.0f * std::log10(symbol_magnitude()) - 20.f * std::log10(ADC_FULL_SCALE);
 }
 
 float Frame::evm() const {
@@ -204,13 +203,7 @@ std::complex<float> FrameDetector::dc_offset() const {
 }
 
 SymbolReader::SymbolReader() {
-    float cutoff_freq = 1.0f / static_cast<float>(samples_per_symbol);
-    sym_pfb = firpfb_crcf_create_kaiser(
-        num_filters,        // number of sub-filters
-        filter_delay,       // symbol delay
-        cutoff_freq,
-        40.0f               // filter rolloff
-    );
+    sym_pfb = firpfb_crcf_create_default(num_filters, filter_delay);
     sym_eq = eqlms_cccf_create(NULL, 3); // a very quick EQ
     eqlms_cccf_set_bw(sym_eq, 1.0f/64);
     bpsk_modem = modemcf_create(LIQUID_MODEM_BPSK);
