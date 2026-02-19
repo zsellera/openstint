@@ -20,7 +20,7 @@ static std::atomic<bool> do_exit(false);
 static const uint64_t CENTER_FREQ_HZ       = 5000000ULL;
 static const uint32_t BB_FILTER_BW         = 1750000;
 static const uint8_t DEFAULT_LNA_GAIN      = 24;           // 0-40 in steps of 8 or so; experiment
-static const uint8_t DEFAULT_VGA_GAIN      = 24;           // 0-62
+static const uint8_t DEFAULT_VGA_GAIN      = 20;           // 0-62
 
 // signal handler to break the capture loop
 void signal_handler(int signum) {

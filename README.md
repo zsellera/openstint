@@ -59,7 +59,7 @@ openstint_hackrf -h
 Usage: openstint_hackrf [-d ser_nr] [-l <0..40>] [-v <0..62>] [-a] [-b] [-p tcp_port] [-m] [-t]
 	-d ser_nr   default:first	serial number of the desired HackRF
 	-l <0..40>  default:24  	LNA gain (rf signal amplifier; valid values: 0/8/16/24/32/40)
-	-v <0..62>  default:24  	VGA gain (baseband signal amplifier, steps of 2)
+	-v <0..62>  default:20  	VGA gain (baseband signal amplifier, steps of 2)
 	-a          default:off 	Enable preamp (+13 dB to input RF signal)
 	-b          default:off 	Enable bias-tee (+3.3 V, 50 mA max)
 	-p port     default:5556	ZeroMQ publisher port
@@ -82,15 +82,15 @@ Usage: openstint_rtlsdr [-d ser_nr] [-g <gain_dB>] [-D] [-b] [-p tcp_port] [-m] 
 
 ## HackRF One or RTL-SDR?
 
-Initial results show 2-3 dB better performace with a HackRF One when compared to an RTL-SDR v4. Given the ~40 dB effective dynamic range of these devices, this is not noticable in practice (if it is, re-think the antenna setup). A HackRF One clone costs 2x more as an RTL-SDR v4 dongle; an original from Great Scott Gadgets is 6-7x more expensive.
+Initial results show 2-3 dB better performace with a HackRF One when compared to an RTL-SDR v4. Given the ~40 dB effective dynamic range of these devices, this is not noticable in practice (if it is, re-think the antenna setup). A HackRF One clone costs 3x more as an RTL-SDR v4 dongle; an original from Great Scott Gadgets is 6-8x more expensive.
 
 For permanent setups, prefer the HackRF One though. The RTL-SDR dongle heats up considerably. I would not put it into an enclosed electrical box, and I would not leave it exposed to sunshine neither. The HackRF board is much less dense, thermal management is not a problem there.
 
-| Radio      | Typ. price | Est. dynamic range | Thermal | Notes               |
-|------------|------------|--------------------|---------|---------------------|
-| RTL-SDR v3 | $35        | 40 dB              | OK      | no gain control !!! |
-| RTL-SDR v4 | $40        | 37 dB              | warm    | in-band spurs       |
-| HackRF One | $120       | 39 dB              | OK      | -                   |
+| Radio      | Typ. price | Est. dynamic range | Thermal | Default gain          | LSB Sensitivity   | Notes           |
+|------------|------------|--------------------|---------|-----------------------|-------------------|-----------------|
+| RTL-SDR v3 | $35        | 40 dB              | OK      | no gain control       | 2 uVpp (-110 dBm) | a bit noisy     |
+| RTL-SDR v4 | $40        | 37 dB              | warm    | gain:20.7             | 8 uVpp (-98 dBm)  | in-band images! |
+| HackRF One | $120       | 39 dB              | OK      | PA:off LNA:24, VGA:20 | 17 uVpp (-91 dBm) | -               |
 
 ## Contribution
 
