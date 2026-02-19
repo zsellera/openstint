@@ -102,13 +102,26 @@ int main(int argc, char** argv) {
         return EXIT_FAILURE;
     }
 
-    // print device info
+    // print device info and detect V4
+    bool is_v4 = false;
     const char* name = rtlsdr_get_device_name(device_index);
     char manufact[256], product[256], sn[256];
     if (rtlsdr_get_device_usb_strings(device_index, manufact, product, sn) == 0) {
+        is_v4 = std::strstr(product, "V4") != nullptr;
         std::printf("RTL-SDR: %s (SN: %s)\n", name, sn);
     } else {
         std::printf("RTL-SDR: %s\n", name);
+    }
+
+    // RTL-SDR Blog V4 has an on-board HF mixer and can receive 5 MHz natively.
+    // All other dongles need direct sampling mode for HF reception.
+    if (!is_v4) {
+        std::fprintf(stderr, "Non-V4 dongle detected — enabling direct sampling (Q-branch)\n");
+        result = rtlsdr_set_direct_sampling(device, 2);
+        if (result != 0) {
+            std::fprintf(stderr, "rtlsdr_set_direct_sampling() failed: %d\n", result);
+            goto cleanup;
+        }
     }
 
     // set center frequency
@@ -133,12 +146,16 @@ int main(int argc, char** argv) {
 
     // set manual gain mode and tuner gain
     rtlsdr_set_tuner_gain_mode(device, 1);
-    result = rtlsdr_set_tuner_gain(device, gain_tenths_db);
-    if (result != 0) {
-        std::fprintf(stderr, "rtlsdr_set_tuner_gain() failed: %d\n", result);
+    if (is_v4) {
+        result = rtlsdr_set_tuner_gain(device, gain_tenths_db);
+        if (result != 0) {
+            std::fprintf(stderr, "rtlsdr_set_tuner_gain() failed: %d\n", result);
+        } else {
+            int actual = rtlsdr_get_tuner_gain(device);
+            std::fprintf(stderr, "Tuner gain set to %.1f dB\n", actual / 10.0);
+        }
     } else {
-        int actual = rtlsdr_get_tuner_gain(device);
-        std::fprintf(stderr, "Tuner gain set to %.1f dB\n", actual / 10.0);
+        std::fprintf(stderr, "Tuner gain not applicable in direct sampling mode\n");
     }
 
     // enable bias-tee if requested

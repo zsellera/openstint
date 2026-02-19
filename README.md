@@ -5,7 +5,7 @@
 OpenStint is a software defined radio (SDR) based laptiming decoder, using either *HackRF One* or *RTL-SDR v4*. It works both with its own [transponder protocol](docs/transponder-protocol.md) and with AMB/RC3-based transponders. It can run on a Raspberry Pi 3 Model B+. Only a minimal electronics knowledge is required; touching a soldering iron is optional.
 
 * :tada: Supports OpenStint transponder, as well as RC3/RC4Hybrid/MRT and other RC3-clones
-* :wrench: Off-the-shelf components, no electronic skills are required (HackRF One, RTL-SDR v4).
+* :wrench: Off-the-shelf components, no electronic skills are required (HackRF One, RTL-SDR v3 & v4).
 * :checkered_flag: Tested with [ZRound](https://www.zround.com/index.php/download-mananger/)
 * :chart_with_downwards_trend: Low resource requirements: runs even on a Rapsberry Pi 3 Model B+
 * :stopwatch: Precise passing time detection (based on signal strength)
@@ -85,6 +85,12 @@ Usage: openstint_rtlsdr [-d ser_nr] [-g <gain_dB>] [-D] [-b] [-p tcp_port] [-m] 
 Initial results show 2-3 dB better performace with a HackRF One when compared to an RTL-SDR v4. Given the ~40 dB effective dynamic range of these devices, this is not noticable in practice (if it is, re-think the antenna setup). A HackRF One clone costs 2x more as an RTL-SDR v4 dongle; an original from Great Scott Gadgets is 6-7x more expensive.
 
 For permanent setups, prefer the HackRF One though. The RTL-SDR dongle heats up considerably. I would not put it into an enclosed electrical box, and I would not leave it exposed to sunshine neither. The HackRF board is much less dense, thermal management is not a problem there.
+
+| Radio      | Typ. price | Est. dynamic range | Thermal | Notes               |
+|------------|------------|--------------------|---------|---------------------|
+| RTL-SDR v3 | $35        | 40 dB              | OK      | no gain control !!! |
+| RTL-SDR v4 | $40        | 37 dB              | warm    | in-band spurs       |
+| HackRF One | $120       | 39 dB              | OK      | -                   |
 
 ## Contribution
 
