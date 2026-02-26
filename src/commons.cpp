@@ -32,14 +32,14 @@ static Timebase timebase;
 
 
 bool process_frame(Frame* frame) {
+    if (monitor_mode) {
+        std::cout << "F " << *frame << std::endl;
+    }
+
     const uint8_t *softbits = frame->bits();
     if (!softbits) {
         // preamble not found
         return false;
-    }
-
-    if (monitor_mode) {
-        std::cout << "F " << *frame << std::endl;
     }
 
     uint32_t transponder_id;

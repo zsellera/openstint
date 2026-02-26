@@ -122,4 +122,5 @@ private:
     void read_single(Frame *dst, const std::complex<float> offset, const std::complex<int8_t> *src);
     void read_preamble_symbol(std::complex<float> *dst, std::complex<float> symbol);
     void train_preamble(Frame *dst, std::complex<float> offset, const std::complex<int8_t> *src, int end);
+    void costas_tune_correction(Frame *frame, std::complex<float> symbol);
 };
