@@ -31,8 +31,8 @@ void signal_handler(int signum) {
 int main(int argc, char** argv) {
     int result;
 
-    const uint64_t freq_hz = CENTER_FREQ_HZ;
     const uint32_t sample_rate = SAMPLE_RATE;
+    uint64_t freq_hz = CENTER_FREQ_HZ;
     int gain_tenths_db = DEFAULT_GAIN_TENTHS_DB;
     bool bias_tee = false;
     const char* serial = nullptr;
@@ -60,7 +60,7 @@ int main(int argc, char** argv) {
             }
             std::cerr << "Usage: " << argv[0] << " [-d ser_nr] [-g <gain_dB>] [-D] [-b] [-p tcp_port] [-m] [-t]\n";
             std::cerr << "\t-d ser_nr   default:first\tserial number of the desired RTL-SDR\n";
-            std::cerr << "\t-g <dB>     default:" << DEFAULT_GAIN_TENTHS_DB / 10 << "  \ttuner gain in dB\n";
+            std::cerr << "\t-g <0..40>  default:" << DEFAULT_GAIN_TENTHS_DB / 10 << "  \ttuner gain in dB\n";
             std::cerr << "\t-b          default:off \tEnable bias-tee (+4.5 V)\n";
             std::cerr << "\t-p port     default:" << DEFAULT_ZEROMQ_PORT << "\tZeroMQ publisher port\n";
             std::cerr << "\t-m          default:off \tEnable monitor mode (print received frames to stdout)\n";

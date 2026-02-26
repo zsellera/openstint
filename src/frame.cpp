@@ -229,15 +229,7 @@ void SymbolReader::read_single(Frame *frame, const std::complex<float> offset, c
             firpfb_crcf_execute(sym_pfb, frame->symsync_bank, &symbol);
 
             symbol *= frame->correction;
-
-            // digital costas loop
-            float error = symbol.real() * symbol.imag(); // ~phase
-            frame->frequency += 0.0025f * error;
-            frame->phase += frame->frequency + 0.05f * error;
-            frame->correction = std::polar(
-                frame->symbol_scale,
-                -(frame->phase)
-            );
+            costas_tune_correction(frame, symbol);
 
             // equalization
             eqlms_cccf_push(sym_eq, symbol);
@@ -291,18 +283,29 @@ void SymbolReader::train_preamble(Frame *frame, std::complex<float> offset, cons
     int sampling_point = std::distance(preamble_magnitudes, max_magnitude);
 
     // find symbol phase
-    std::complex<float> rotated2x = {0};
-    for (int i=(filter_delay*16)+sampling_point; i<resampled_size; i+=16) {
-        auto sampled_symbol = resampled[i];
-        rotated2x += (sampled_symbol*sampled_symbol);
+    std::complex<float> rotated2x0 = {0}, rotated2x1 = {0};
+    for (int i=filter_delay; i<preamble_length; i++) {
+        auto sampled_symbol = resampled[i*16 + sampling_point];
+        auto rr = (sampled_symbol*sampled_symbol);
+        // collect phases for first and second halves separately (for frequency offset guesstimation):
+        if (i < (preamble_length+filter_delay)/2) {
+            rotated2x0 += rr;
+        } else {
+            rotated2x1 += rr;
+        }
     }
 
     // update frame
     frame->symsync_sym = sampling_point / num_filters;
     frame->symsync_bank = sampling_point % num_filters;
     frame->symbol_scale = 1.0f / std::sqrt((*max_magnitude) / static_cast<float>(preamble_length));
-    frame->phase = std::arg(rotated2x) / 2.0f;
+    frame->phase = std::arg(rotated2x0 + rotated2x1) / 2.0f;
     frame->correction = std::polar(frame->symbol_scale, -frame->phase);
+    // frequency offset estimation: average the phase of first and second half of the preamble,
+    // and find the angle between the two averages. The arg(z0*conj(z1)) is a "known trick" to find
+    // the angle. Since it's BPSK, we use the arg(z*z)/2 to have both symbols in a single point.
+    // There is (preamble_length-filter_delay)/2 time between the two averages, 2/2 cancels out.
+    frame->frequency = std::arg(rotated2x1 * std::conj(rotated2x0)) / (preamble_length - filter_delay);
 
     // train EQ on preamble
     if ((1.0f / frame->symbol_scale) > EQLMS_TRAINING_THRESHOLD) {
@@ -324,6 +327,7 @@ void SymbolReader::train_preamble(Frame *frame, std::complex<float> offset, cons
     // read preamble to frame (with initial filter response)
     for (int i=0; i<preamble_length; i++) {
         std::complex<float> symbol = resampled[i*16 + sampling_point] * frame->correction;
+        costas_tune_correction(frame, symbol);
 
         // run EQ:
         eqlms_cccf_push(sym_eq, symbol);
@@ -363,4 +367,14 @@ bool SymbolReader::is_frame_complete(const Frame *f) {
     // payload, obviously
     // the symbol-sync's filters has their own delay
     return f->softbits.size() > (f->preamble_size + f->payload_size + filter_delay);
+}
+
+void SymbolReader::costas_tune_correction(Frame *frame, std::complex<float> symbol) {
+    float error = std::arg(symbol*symbol) / 2.0f; // phase; slower than real*imag, but much better
+    frame->frequency += 0.0025f * error;
+    frame->phase += frame->frequency + 0.05f * error;
+    frame->correction = std::polar(
+        frame->symbol_scale,
+        -(frame->phase)
+    );
 }
