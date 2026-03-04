@@ -157,14 +157,20 @@ std::optional<TransponderType> FrameDetector::process_baseband(const std::comple
     s1 += samples[0];
     s2 += mag2s[0];
     n++;
-
+    
     // run matchers
     if (buffers[idx].match_preamble(p_openstint) > threshold) {
         return TransponderType::OpenStint;
     }
     if (buffers[idx].match_preamble(p_legacy) > threshold) {
         return TransponderType::Legacy;
+    }    
+    if (buffers[idx].match_preamble(p_rc4) > 0.5) {       
+        return TransponderType::RC4;
     }
+    
+        
+    
     return std::nullopt;
 }
 
