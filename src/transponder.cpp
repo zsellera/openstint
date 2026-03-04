@@ -3,6 +3,8 @@
 #include <bit>
 #include <string>
 
+#include <stdio.h>
+
 extern "C" {
 #include <fec.h>
 }
@@ -83,8 +85,7 @@ int decode_legacy(const uint8_t *softbits, uint32_t *transponder_id) {
     // To get the pre-encoded message, reverse the binary word and break into 
     // chunks of 3. You'll end up with 24/3=8 chunks:
     // 111 000 010 110 101 101 001 000
-    // Suffix each chunk with a bit from a "status code",
-    // in my RC4 hybrid transponder, it was 00000101
+    // Suffix each chunk with a bit from a "status code", in my transponder, it was 00000101
     // 1110 0000 0100 1100 1010 1011 0010 0001
     uint32_t tid = 0; // transponder_id
     uint8_t status = 0; // status code
@@ -97,7 +98,9 @@ int decode_legacy(const uint8_t *softbits, uint32_t *transponder_id) {
         } else {
             status = (status << 1) | bit;
         }
-    }
+    }    
+   
+   
     *transponder_id = tid;
 
     // the last byte must be zero (tail==0 error check)
@@ -106,4 +109,15 @@ int decode_legacy(const uint8_t *softbits, uint32_t *transponder_id) {
     // RC4 hybrid and "recent" RC3 indicate status messages in lower 3 bits (0x07 mask)
     // Older RC3 indicate normal messages by setting all bits 1 (0xff)
     return (trail == 0) && ((status == 0xff) || (status & 0x07)==0);
+}
+int decode_rc4(const uint8_t *softbits, uint32_t *transponder_id) {
+    uint8_t decoded[4];
+
+    init_viterbi29(viterbi_decoder, 0);
+    update_viterbi29_blk(viterbi_decoder, const_cast<uint8_t*>(softbits), 32+8); // khm...
+    chainback_viterbi29(viterbi_decoder, decoded, 32, 0);
+    
+    *transponder_id = (static_cast<uint32_t>(decoded[0]) << 24) | (static_cast<uint32_t>(decoded[1]) << 16) | static_cast<uint32_t>(decoded[2]<<8)| static_cast<uint32_t>(decoded[3]);
+    
+    return true;
 }
