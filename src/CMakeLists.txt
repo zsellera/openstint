@@ -1,3 +1,9 @@
+cmake_minimum_required(VERSION 3.15) # 建議至少 3.15 以支援更好的 C++20 處理
+project(OpenStint LANGUAGES C CXX)
+
+# 解決你之前遇到的 CMP0003 警告
+cmake_policy(SET CMP0003 NEW)
+
 # Use C++20 (or newer if needed)
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
@@ -22,6 +28,7 @@ set(OPENSTINT_BASE_SOURCES
     passing.cpp
     counters.cpp
     commons.cpp
+    rc4_registry.cpp
 )
 
 # Required dependencies
@@ -32,6 +39,7 @@ find_path(FEC_INCLUDE_DIR NAMES fec.h)
 find_library(FEC_LIB REQUIRED NAMES fec)
 
 find_package(cppzmq REQUIRED)
+find_library(SQLITE3_LIB NAMES sqlite3 REQUIRED)
 
 if(USE_HACKRF)
     find_path(HACKRF_INCLUDE_DIR NAMES libhackrf/hackrf.h)
@@ -45,6 +53,7 @@ if(USE_HACKRF)
       ${LIQUID_LIB}
       ${HACKRF_LIB}
       ${FEC_LIB}
+      ${SQLITE3_LIB}
       cppzmq
       m
     )
@@ -62,7 +71,9 @@ if(USE_RTLSDR)
       ${LIQUID_LIB}
       ${RTLSDR_LIB}
       ${FEC_LIB}
+      ${SQLITE3_LIB}
       cppzmq
+      fmt
       m
     )
 endif()
