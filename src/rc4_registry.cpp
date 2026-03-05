@@ -13,17 +13,15 @@ RC4Registry::RC4Registry() {
 }
 void RC4Registry::init_db() {
     sqlite3* db;
-    char* err_msg = 0;
-
-    // 1. 打開資料庫（若不存在會自動建立檔案）
+    char* err_msg = 0;   
     int rc = sqlite3_open("openstint_rc4.db", &db);
     if (rc != SQLITE_OK) {
-        std::cerr << "無法開啟資料庫進行初始化: " << sqlite3_errmsg(db) << std::endl;
+        std::cerr << "Unable to start database initialization: " << sqlite3_errmsg(db) << std::endl;
         return;
     }
 
-    // 2. 建立資料表並設定 AUTOINCREMENT 起始值
-    // 使用批次指令：建立表 -> 嘗試插入起始值
+      // 2. Create a table and set the AUTOINCREMENT starting value
+    // Use batch commands: Create table -> Attempt to insert starting value
     const char* init_sql = 
         "CREATE TABLE IF NOT EXISTS transponder_rc4 ("
         "  id INTEGER PRIMARY KEY AUTOINCREMENT,"
@@ -35,7 +33,7 @@ void RC4Registry::init_db() {
     rc = sqlite3_exec(db, init_sql, 0, 0, &err_msg);
     
     if (rc != SQLITE_OK) {
-        std::cerr << "初始化資料表失敗: " << err_msg << std::endl;
+        std::cerr << "Initializing the data table failed: " << err_msg << std::endl;
         sqlite3_free(err_msg);
     } else {
         // 只有在 Debug 模式或第一次執行時才顯示
@@ -46,35 +44,33 @@ void RC4Registry::init_db() {
 }
 uint64_t RC4Registry::save_to_db() {  
     sort_by_rc4_ids();
-    if(rc4_ids[0][1]<150){ //取得ID樣本數太少
+    if(rc4_ids[0][1]<150){ 
         clear();
         return 0;
     }
     std::stringstream ss;
     int limit = std::min(this->rc4_i, 30);
     for (int i = 0; i < limit; i++) {
-        ss << rc4_ids[i][0]; // 取得 ID
+        ss << rc4_ids[i][0]; 
         if (i < limit - 1) {
-            ss << ","; // 補上逗號
+            ss << ","; 
         }
     }
     std::string final_ids = ss.str();
 
     if (final_ids.empty()) return 0;
-    uint64_t new_id=0;
-    // 3. 寫入資料庫
+    uint64_t new_id=0;  
     sqlite3* db;
     if (sqlite3_open("openstint_rc4.db", &db) == SQLITE_OK) {
         std::string sql = "INSERT INTO transponder_rc4 (rc4_ids) VALUES ('" + final_ids + "');";
         char* err_msg = 0;
         int rc = sqlite3_exec(db, sql.c_str(), 0, 0, &err_msg);
         
-        if (rc == SQLITE_OK) {
-            // 2. 關鍵步驟：取得剛剛產生的 AUTOINCREMENT ID
+        if (rc == SQLITE_OK) {            
             new_id = sqlite3_last_insert_rowid(db);
-            std::cout << "資料存入成功，取得新增 ID: " << new_id << std::endl;
+            std::cout << "RC4 comparison data successfully saved, ID: " << new_id << std::endl;
         } else {
-            fprintf(stderr, "SQL 錯誤: %s\n", err_msg);
+            fprintf(stderr, "SQL Error: %s\n", err_msg);
             sqlite3_free(err_msg);            
         }
         sqlite3_close(db);
@@ -86,27 +82,27 @@ uint64_t RC4Registry::find_id_by_transponder(uint64_t target_id) {
     sqlite3_stmt* stmt;
     uint64_t found_db_id = 0;
 
-    // 1. 打開資料庫
+    
     if (sqlite3_open("openstint_rc4.db", &db) != SQLITE_OK) {
         return 0;
     }
 
-    // 2. 使用精確的比對邏輯：
-    // 將 rc4_ids 前後補上逗號，搜尋時也前後補上逗號，確保比對的是完整數字
-    // 例如：搜尋 ",3157844207," 是否存在於 ",123,3157844207,456," 之中
+        // 2. Use precise comparison logic:
+    // Pad rc4_ids with commas before and after it, and also pad the search with commas before and after it to ensure that complete numbers are compared.
+    // For example: search if ",3157844207," exists within ",123,3157844207,456,"
     std::string sql = "SELECT id FROM transponder_rc4 WHERE ',' || rc4_ids || ',' LIKE ? LIMIT 1;";
 
     if (sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, 0) == SQLITE_OK) {
-        // 將 uint64_t 轉換為字串並包裝成 LIKE 參數
+        // Convert uint64_t to a string and wrap it as a LIKE parameter
         std::string search_str = "%," + std::to_string(target_id) + ",%";
         sqlite3_bind_text(stmt, 1, search_str.c_str(), -1, SQLITE_TRANSIENT);
 
-        // 3. 執行查詢
+        
         if (sqlite3_step(stmt) == SQLITE_ROW) {
             found_db_id = sqlite3_column_int64(stmt, 0);
         }
     } else {
-        std::cerr << "SQL Prepare 錯誤: " << sqlite3_errmsg(db) << std::endl;
+        std::cerr << "SQL Prepare error: " << sqlite3_errmsg(db) << std::endl;
     }
 
     // 4. 清理與關閉
@@ -159,12 +155,12 @@ void RC4Registry::clear() {
     pre_time=0;
 }
 void RC4Registry::sort_by_rc4_ids() {
-    // rc4_i 是目前登記的有效 ID 數量
+    
     if (rc4_i < 2) return; 
 
-    // 針對 rc4_ids[i][1] (累加次數) 進行降序排序
+    // Sort rc4_ids[i][1] (cumulative count) in descending order.
     std::sort(rc4_ids.begin(), rc4_ids.begin() + rc4_i, 
         [](const std::vector<uint32_t>& a, const std::vector<uint32_t>& b) {
-            return a[1] > b[1]; // 大的在前
+            return a[1] > b[1]; 
         });
 }
