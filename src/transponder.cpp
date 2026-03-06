@@ -111,7 +111,7 @@ int decode_legacy(const uint8_t *softbits, uint32_t *transponder_id) {
     // Older RC3 indicate normal messages by setting all bits 1 (0xff)
     return (trail == 0) && ((status == 0xff) || (status & 0x07)==0);
 }
-int decode_rc4(const uint8_t *softbits, uint32_t *transponder_id,,uint64_t timestamp) {
+int decode_rc4(const uint8_t *softbits, uint32_t *transponder_id,uint64_t timestamp) {
     uint64_t shreg = 0; // shift register
     bool last_ok = true; // last 2-bits were successfully decoded
     
