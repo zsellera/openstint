@@ -36,8 +36,7 @@ void RC4Registry::init_db() {
         std::cerr << "Initializing the data table failed: " << err_msg << std::endl;
         sqlite3_free(err_msg);
     } else {
-        // 只有在 Debug 模式或第一次執行時才顯示
-        // std::cout << "資料庫初始化檢查完成。" << std::endl;
+        
     }
 
     sqlite3_close(db);
@@ -49,7 +48,7 @@ uint64_t RC4Registry::save_to_db() {
         return 0;
     }
     std::stringstream ss;
-    int limit = std::min(this->rc4_i, 30);
+    int limit = std::min(this->rc4_i, 32);
     for (int i = 0; i < limit; i++) {
         ss << rc4_ids[i][0]; 
         if (i < limit - 1) {
