@@ -9,6 +9,7 @@ extern "C" {
 #include <fec.h>
 }
 #include <liquid/liquid.h>
+#include "rc4_registry.hpp"
 
 static void *viterbi_decoder;
 static crc_scheme crc8_scheme = LIQUID_CRC_8;
