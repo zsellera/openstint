@@ -69,10 +69,8 @@ bool process_frame(Frame* frame) {
         break;
         case TransponderType::RC4:       
        
-        if (decode_rc4(softbits, &transponder_id)) {            
-           transponder_id = g_rc4_registry.register_transponder(frame->timestamp,transponder_id);            
-           if(transponder_id==0)return false; 
-           passing_detector.append(frame, transponder_id);        
+         if (decode_rc4(softbits, &transponder_id,frame->timestamp)) { 
+            passing_detector.append(frame, transponder_id);        
             return true;
         }
         break;
