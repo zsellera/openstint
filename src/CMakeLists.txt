@@ -45,6 +45,7 @@ if(USE_HACKRF)
     target_include_directories(openstint_hackrf PRIVATE ${LIQUID_INCLUDE_DIR} ${HACKRF_INCLUDE_DIR} ${cppzmq_INCLUDE_DIR} ${FEC_INCLUDE_DIR})
     target_link_libraries(openstint_hackrf
       ${LIQUID_LIB}
+      ${FFTW3F_LIB}
       ${HACKRF_LIB}
       ${FEC_LIB}
       ${SQLITE3_LIB}
@@ -63,6 +64,7 @@ if(USE_RTLSDR)
     target_include_directories(openstint_rtlsdr PRIVATE ${LIQUID_INCLUDE_DIR} ${RTLSDR_INCLUDE_DIR} ${cppzmq_INCLUDE_DIR} ${FEC_INCLUDE_DIR})
     target_link_libraries(openstint_rtlsdr
       ${LIQUID_LIB}
+      ${FFTW3F_LIB}
       ${RTLSDR_LIB}
       ${FEC_LIB}
       ${SQLITE3_LIB}
