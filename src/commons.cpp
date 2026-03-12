@@ -15,13 +15,15 @@
 #include "passing.hpp"
 #include "counters.hpp"
 #include "timebase.hpp"
-
+#include "rc4_registry.hpp"
 
 static int zmq_port = DEFAULT_ZEROMQ_PORT;
 static zmq::context_t* zmq_context = nullptr;
 static zmq::socket_t* publisher = nullptr;
+enum FrameParseMode { FRAME_SEEK, FRAME_FOUND };
+static inline FrameParseMode frame_parse_mode = FRAME_SEEK;
 
-static enum FrameParseMode { FRAME_SEEK, FRAME_FOUND } frame_parse_mode = FRAME_SEEK;
+//static enum FrameParseMode { FRAME_SEEK, FRAME_FOUND } frame_parse_mode = FRAME_SEEK;
 static FrameDetector frame_detector(0.84f - 0.01f*SAMPLES_PER_SYMBOL);
 static SymbolReader symbol_reader;
 static Frame frame;
@@ -30,17 +32,15 @@ static RxStatistics rx_stats;
 static bool monitor_mode = false;
 static Timebase timebase;
 
-
 bool process_frame(Frame* frame) {
     if (monitor_mode) {
         std::cout << "F " << *frame << std::endl;
     }
-
     const uint8_t *softbits = frame->bits();
     if (!softbits) {
         // preamble not found
         return false;
-    }
+    }   
 
     uint32_t transponder_id;
     switch (frame->transponder_type) {
@@ -52,6 +52,9 @@ bool process_frame(Frame* frame) {
                 uint32_t transponder_timestamp = (transponder_id & 0x000FFFFF);
                 passing_detector.timesync(frame, transponder_timestamp);
             }
+           
+         
+            g_rc4_registry.clear();  
             return true;
         }
         break;
@@ -60,6 +63,16 @@ bool process_frame(Frame* frame) {
             if (transponder_id < 10000000) { // extra check (7-digit max)
                 passing_detector.append(frame, transponder_id);
             }
+          
+             
+            g_rc4_registry.clear();      
+            return true;
+        }
+        break;
+        case TransponderType::RC4:       
+       
+         if (decode_rc4(softbits, &transponder_id,frame->timestamp)) { 
+            passing_detector.append(frame, transponder_id);        
             return true;
         }
         break;
@@ -123,7 +136,7 @@ bool parse_common_arguments(int& i, const int argc, const std::string& arg, char
 void init_commons() {
     // transponder processing (allocate viterbi trellis); TODO RAII
     init_transponders();
-
+    
     //  Prepare our context and publisher
     std::string zmq_address;
     std::format_to(std::back_inserter(zmq_address), "tcp://*:{}", zmq_port);
@@ -158,7 +171,7 @@ void report_detections() {
         publisher->send(zmq::buffer(report), zmq::send_flags::none);
     }
 
-    std::vector<Passing> passings = passing_detector.identify_passings(now - 250ul);
+    std::vector<Passing> passings = passing_detector.identify_passings(now - 1000ul);
     for (const auto& passing : passings) {
         const std::string report = std::format("P {} {} {} {:.2f} {} {}",
             passing.timestamp,

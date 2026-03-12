@@ -22,6 +22,7 @@ set(OPENSTINT_BASE_SOURCES
     passing.cpp
     counters.cpp
     commons.cpp
+    rc4_registry.cpp
 )
 
 # Required dependencies
@@ -32,6 +33,7 @@ find_path(FEC_INCLUDE_DIR NAMES fec.h)
 find_library(FEC_LIB REQUIRED NAMES fec)
 
 find_package(cppzmq REQUIRED)
+find_library(SQLITE3_LIB NAMES sqlite3 REQUIRED)
 
 if(USE_HACKRF)
     find_path(HACKRF_INCLUDE_DIR NAMES libhackrf/hackrf.h)
@@ -43,8 +45,10 @@ if(USE_HACKRF)
     target_include_directories(openstint_hackrf PRIVATE ${LIQUID_INCLUDE_DIR} ${HACKRF_INCLUDE_DIR} ${cppzmq_INCLUDE_DIR} ${FEC_INCLUDE_DIR})
     target_link_libraries(openstint_hackrf
       ${LIQUID_LIB}
+      ${FFTW3F_LIB}
       ${HACKRF_LIB}
       ${FEC_LIB}
+      ${SQLITE3_LIB}
       cppzmq
       m
     )
@@ -60,8 +64,10 @@ if(USE_RTLSDR)
     target_include_directories(openstint_rtlsdr PRIVATE ${LIQUID_INCLUDE_DIR} ${RTLSDR_INCLUDE_DIR} ${cppzmq_INCLUDE_DIR} ${FEC_INCLUDE_DIR})
     target_link_libraries(openstint_rtlsdr
       ${LIQUID_LIB}
+      ${FFTW3F_LIB}
       ${RTLSDR_LIB}
       ${FEC_LIB}
+      ${SQLITE3_LIB}
       cppzmq
       m
     )

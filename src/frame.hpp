@@ -61,6 +61,7 @@ class FrameDetector {
     // preamble matching
     static inline const Preamble<uint16_t> p_openstint { transponder_props(TransponderType::OpenStint).bpsk_preamble };
     static inline const Preamble<uint16_t> p_legacy { transponder_props(TransponderType::Legacy).bpsk_preamble };
+    static inline const Preamble<uint16_t> p_rc4 { transponder_props(TransponderType::RC4).bpsk_preamble };
 
     CircBuff<uint16_t> buffers[samples_per_symbol];
     float threshold;
