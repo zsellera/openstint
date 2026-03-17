@@ -4,12 +4,13 @@
 #include <iostream>
 #include <sstream>
 #include <string>
+#include <sys/stat.h>
 std::vector<std::vector<uint32_t>> rc4_ids(1000, std::vector<uint32_t>(2, 1));
 
 // Global registry instance
 RC4Registry g_rc4_registry;
 sqlite3* db;
-sqlite3_stmt* stmt;
+
 
 RC4Registry::RC4Registry() {
     init_db();
@@ -53,9 +54,7 @@ void RC4Registry::init_db() {
     } else {
         
     }
-    sqlite3_open("openstint_rc4.db", &db);
-    std::string sql = "SELECT transponder_id FROM transponder_rc4 WHERE  rc4_ids  LIKE ? LIMIT 1;";
-    sqlite3_prepare_v2(db, sql.c_str(), -1, &stmt, 0);
+
    
 }
 uint64_t RC4Registry::save_to_db() {  
@@ -93,26 +92,45 @@ uint64_t RC4Registry::save_to_db() {
     return new_id;
 }
 
-uint64_t RC4Registry::find_id_by_transponder(uint64_t target_id) {
-   
-    if (lookup_cache.count(target_id)) {
-        return lookup_cache[target_id];
-    }
-    uint64_t found_db_id = 0;
+// 定義一個結構來接收結果
+struct QueryResult {
+    std::string transponder_id;
+    bool found = false;
+};
 
-        std::string search_str = "%" + std::to_string(target_id) + "%";
-        sqlite3_bind_text(stmt, 1, search_str.c_str(), -1, SQLITE_TRANSIENT);
+// 回呼函數 (SQLite 每查到一筆資料就會跳進來這裡一次)
+int my_callback(void* data, int argc, char** argv, char** azColName) {
+    (void)azColName;
+    QueryResult* res = static_cast<QueryResult*>(data);
+    if (argc > 0 && argv[0]) {
+        res->transponder_id = argv[0]; // 取得第一欄 (transponder_id) 的內容
+        res->found = true;
+    }
+    return 0; // 回傳 0 繼續查詢，回傳非 0 則停止查詢
+}
+uint64_t RC4Registry::find_id_by_transponder(uint64_t target_id) {
+    
+    QueryResult result;
+    uint64_t found_db_id = 0;
+    std::string sql = std::string("SELECT transponder_id FROM transponder_rc4 WHERE rc4_ids LIKE '%") 
+                  + std::to_string(target_id) 
+                  + "%' LIMIT 1;";
+
+    uint64_t rc = sqlite3_exec(db, sql.c_str(), my_callback, &result, 0);
+    if (rc == SQLITE_OK && result.transponder_id !="") {
+        found_db_id = std::stoull(result.transponder_id);
+    }
+    /*
+    std::string search_str = "%" + std::to_string(target_id) + "%";
+    sqlite3_bind_text(stmt, 1, search_str.c_str(), -1, SQLITE_TRANSIENT);
 
         
-        if (sqlite3_step(stmt) == SQLITE_ROW) {
-            found_db_id = sqlite3_column_int64(stmt, 0);
-            lookup_cache[target_id] = found_db_id;
-        }
-   
-
-   
-  
-
+    if (sqlite3_step(stmt) == SQLITE_ROW) {
+        found_db_id = sqlite3_column_int64(stmt, 0);
+        lookup_cache[target_id] = found_db_id;
+    }
+    sqlite3_reset(stmt);
+    */
     return found_db_id;
 }
 uint32_t RC4Registry::register_transponder(uint64_t timestamp,uint32_t transponder_id) {
