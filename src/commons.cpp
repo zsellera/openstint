@@ -141,9 +141,10 @@ void report_detections() {
 
     // report status once a second
     if (rx_stats.reporting_due(now_ts)) {
-        const std::string report = std::format("S {} {}",
+        const std::string report = std::format("S {} {} {}",
             now_ts,
-            rx_stats.to_string()
+            rx_stats.to_string(),
+            timebase.get_error()
         );
         rx_stats.reset(now_ts);
 

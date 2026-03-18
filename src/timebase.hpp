@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <chrono>
+#include <mutex>
 
 class Timebase
 {
@@ -24,4 +25,5 @@ public:
     std::chrono::steady_clock::time_point to_steady(uint64_t timecode);
     uint64_t to_timestamp(uint64_t timecode);
     int64_t from_millis(int64_t ms);
+    std::chrono::microseconds get_error();
 };

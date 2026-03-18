@@ -16,6 +16,7 @@ int32_t Timebase::advance_clock(uint64_t sample_count)
     std::lock_guard<std::mutex> lock(mutex);
     const auto actual_ts = steady_clock::now();
     const microseconds buffer_duration(sample_count * 1000000 / SAMPLE_RATE);
+    last_sample_ts = actual_ts;
 
     if (sample_counter == 0) { // first read
         first_sample_ts = actual_ts;
@@ -58,4 +59,9 @@ uint64_t Timebase::to_timestamp(uint64_t timecode)
 
 int64_t Timebase::from_millis(int64_t ms) {
     return ms * SAMPLE_RATE / 1000;
+}
+
+microseconds Timebase::get_error() {
+    microseconds d = duration_cast<microseconds>(last_sample_ts - first_sample_ts);
+    return wallclk_duration - d;
 }
