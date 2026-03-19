@@ -6,7 +6,6 @@
 #include <iostream>
 #include <string>
 #include <vector>
-#include <mutex>
 
 #include <zmq.hpp>
 
@@ -152,7 +151,7 @@ uint64_t reporting_timestamp(uint64_t timestamp_us, uint64_t steady_now, uint64_
 }
 
 void report_detections() {
-    const uint64_t now_sysclk = duration_cast<microseconds>(steady_clock::now().time_since_epoch()).count();
+    const uint64_t now_sysclk = duration_cast<microseconds>(system_clock::now().time_since_epoch()).count();
     const uint64_t now_ts = duration_cast<microseconds>(steady_clock::now().time_since_epoch()).count() - startup_ts;
 
     // report status once a second

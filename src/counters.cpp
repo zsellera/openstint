@@ -21,18 +21,11 @@ void RxStatistics::save_channel_characteristics(std::complex<float> _dc_offset, 
     noise_power = _noise_power;
 }
 
-void RxStatistics::register_dropped_buffers(int32_t drop_count) {
-    std::lock_guard<std::mutex> lock(mutex);
-
-    buffers_dropped += drop_count;
-}
-
 void RxStatistics::reset(uint64_t current_timestamp) {
     std::lock_guard<std::mutex> lock(mutex);
 
     frames_received = 0;
-    frames_processed = 0; 
-    buffers_dropped = 0;
+    frames_processed = 0;
     last_reset_timestamp = current_timestamp;
 }
 
@@ -48,12 +41,11 @@ std::string RxStatistics::to_string() {
     
     std::string temp;
     std::format_to(
-        std::back_inserter(temp), "{:.2f} {:.2f} {} {} {}",
+        std::back_inserter(temp), "{:.2f} {:.2f} {} {}",
         noise_floor, 
         std::abs(dc_offset), 
         frames_received,
-        frames_processed,
-        buffers_dropped
+        frames_processed
     );
     return temp;
 }
