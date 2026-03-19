@@ -6,6 +6,7 @@
 #include <iostream>
 #include <string>
 #include <vector>
+#include <mutex>
 
 #include <zmq.hpp>
 
@@ -14,8 +15,8 @@
 #include "frame.hpp"
 #include "passing.hpp"
 #include "counters.hpp"
-#include "timebase.hpp"
 
+using namespace std::chrono;
 
 static int zmq_port = DEFAULT_ZEROMQ_PORT;
 static zmq::context_t* zmq_context = nullptr;
@@ -28,7 +29,9 @@ static Frame frame;
 static PassingDetector passing_detector;
 static RxStatistics rx_stats;
 static bool monitor_mode = false;
-static Timebase timebase;
+static const uint64_t startup_ts = duration_cast<microseconds>(steady_clock::now().time_since_epoch()).count();
+static bool mode_sysclk = false;
+static uint64_t timecode = 0ul;
 
 
 bool process_frame(Frame* frame) {
@@ -68,9 +71,7 @@ bool process_frame(Frame* frame) {
 }
 
 void detect_frames(const std::complex<int8_t>* samples, std::size_t sample_count) {
-    const int32_t dropped_buff_cnt = timebase.advance_clock(sample_count);
-    const uint64_t buffer_ts = timebase.get_timecode() - sample_count;
-    rx_stats.register_dropped_buffers(dropped_buff_cnt);
+    const uint64_t timestamp = duration_cast<microseconds>(steady_clock::now().time_since_epoch()).count();
 
     bool frame_detected = false;
     for (uint32_t idx=0; (idx+SAMPLES_PER_SYMBOL)<=sample_count; idx+=SAMPLES_PER_SYMBOL) {
@@ -79,7 +80,11 @@ void detect_frames(const std::complex<int8_t>* samples, std::size_t sample_count
             if (detected) {
                 frame_parse_mode = FRAME_FOUND;
                 frame_detected = true; // do not use this buffer for noisefloor calculation
-                frame = Frame(detected.value(), timebase.to_timestamp(buffer_ts + idx));
+                frame = Frame(
+                    detected.value(),
+                    timestamp - startup_ts + microseconds(idx * 1000000ul / SAMPLE_RATE).count(),
+                    timecode + idx
+                );
                 symbol_reader.read_preamble(&frame, frame_detector.dc_offset(), samples, idx+SAMPLES_PER_SYMBOL);
             }
         } else if (frame_parse_mode == FRAME_FOUND) {
@@ -91,6 +96,9 @@ void detect_frames(const std::complex<int8_t>* samples, std::size_t sample_count
             }
         }
     }
+
+    // update global sample counter
+    timecode += sample_count;
 
     // save a small section of the buffer
     // if there is a frame in the next buffer, and read_preamble() must
@@ -115,7 +123,7 @@ bool parse_common_arguments(int& i, const int argc, const std::string& arg, char
     } else if (arg == "-m") {
         monitor_mode = true;
     } else if (arg == "-t") {
-        timebase.use_system_clock();
+        mode_sysclk = true;
     } else {
         return false;
     }
@@ -135,16 +143,23 @@ void init_commons() {
     std::cout << "Listening on " << zmq_address << std::endl;
 }
 
+uint64_t reporting_timestamp(uint64_t timestamp_us, uint64_t steady_now, uint64_t sysclk_now) {
+    if (mode_sysclk) {
+        return (sysclk_now - (steady_now - timestamp_us))/1000ul;
+    } else {
+        return timestamp_us/1000ul;
+    }
+}
+
 void report_detections() {
-    const auto now_tc = timebase.get_timecode();
-    const auto now_ts = timebase.to_timestamp(now_tc);
+    const uint64_t now_sysclk = duration_cast<microseconds>(steady_clock::now().time_since_epoch()).count();
+    const uint64_t now_ts = duration_cast<microseconds>(steady_clock::now().time_since_epoch()).count() - startup_ts;
 
     // report status once a second
     if (rx_stats.reporting_due(now_ts)) {
-        const std::string report = std::format("S {} {} {}",
-            now_ts,
-            rx_stats.to_string(),
-            timebase.get_error()
+        const std::string report = std::format("S {} {}",
+            reporting_timestamp(now_ts, now_ts, now_sysclk),
+            rx_stats.to_string()
         );
         rx_stats.reset(now_ts);
 
@@ -152,10 +167,10 @@ void report_detections() {
         publisher->send(zmq::buffer(report), zmq::send_flags::none);
     }
     
-    std::vector<TimeSync> timesyncs = passing_detector.identify_timesyncs(500l);
+    std::vector<TimeSync> timesyncs = passing_detector.identify_timesyncs(500000l);
     for (const auto& time_sync : timesyncs) {
         const std::string report = std::format("T {} {} {} {}",
-            time_sync.timestamp,
+            reporting_timestamp(time_sync.timestamp, now_ts, now_sysclk),
             transponder_props(time_sync.transponder_type).prefix, // always openstint
             time_sync.transponder_id,
             time_sync.transponder_timestamp
@@ -165,10 +180,10 @@ void report_detections() {
         publisher->send(zmq::buffer(report), zmq::send_flags::none);
     }
 
-    std::vector<Passing> passings = passing_detector.identify_passings(now_ts - 250l);
+    std::vector<Passing> passings = passing_detector.identify_passings(now_ts - 250000ul);
     for (const auto& passing : passings) {
         const std::string report = std::format("P {} {} {} {:.2f} {} {}",
-            passing.timestamp,
+            reporting_timestamp(passing.timestamp, now_ts, now_sysclk),
             transponder_props(passing.transponder_type).prefix,
             passing.transponder_id,
             passing.rssi,

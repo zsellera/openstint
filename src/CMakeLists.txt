@@ -22,7 +22,6 @@ set(OPENSTINT_BASE_SOURCES
     passing.cpp
     counters.cpp
     commons.cpp
-    timebase.cpp
 )
 
 # Required dependencies

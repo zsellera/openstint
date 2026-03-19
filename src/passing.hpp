@@ -14,17 +14,17 @@
 
 struct Detection {
     uint64_t timestamp;
+    uint64_t timecode;
     float rssi;
-    float evm;
 
-    Detection(uint64_t _ts, float _rssi, float _evm) : timestamp(_ts), rssi(_rssi), evm(_evm) {};
+    Detection(uint64_t _ts, uint64_t _tc, float _rssi) : timestamp(_ts), timecode(_tc), rssi(_rssi) {};
 };
 
 struct TimeSyncMsg {
-    uint64_t timestamp;
+    uint64_t decoder_timestamp;
     uint32_t transponder_timestamp;
 
-    TimeSyncMsg(uint64_t _ts, uint64_t _transponder_ts) : timestamp(_ts), transponder_timestamp(_transponder_ts) {};
+    TimeSyncMsg(uint64_t _ts, uint64_t _transponder_ts) : decoder_timestamp(_ts), transponder_timestamp(_transponder_ts) {};
 };
 
 struct Passing {
@@ -33,7 +33,7 @@ struct Passing {
     uint32_t transponder_id;
     float rssi;
     size_t hits;
-    uint32_t duration;
+    uint64_t duration;
 };
 
 struct TimeSync {

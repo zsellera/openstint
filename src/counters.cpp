@@ -1,10 +1,10 @@
 #include "counters.hpp"
 
-#define REPORTING_PERIOD 5000
+#define REPORTING_PERIOD_US 5000000
 
 
 bool RxStatistics::reporting_due(uint64_t current_timestamp) {
-    return current_timestamp >= last_reset_timestamp + REPORTING_PERIOD;
+    return current_timestamp >= last_reset_timestamp + REPORTING_PERIOD_US;
 }
 
 void RxStatistics::register_frame(bool processed) {
