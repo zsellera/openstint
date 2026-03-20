@@ -20,6 +20,14 @@
 #define SAMPLES_PER_SYMBOL 4
 #endif
 
+#ifndef SYMBOL_RATE
+#define SYMBOL_RATE 1250000
+#endif
+
+#ifndef SAMPLE_RATE
+#define SAMPLE_RATE (SYMBOL_RATE * SAMPLES_PER_SYMBOL)
+#endif
+
 struct Frame {
     TransponderType transponder_type; // what kind of preamble was matched
     uint32_t preamble_size;
@@ -33,7 +41,12 @@ struct Frame {
     // decoding error accumulator
     float evm_sum = 0;
 
-    uint64_t timestamp;
+    // frame timing, 2 types of time is tracked:
+    // - timestamp is an OS-provided steady-time, subject to scheduler's jitter
+    // - timecode is the number of IQ samples since startup, subject to buffer underruns
+    // the clocks run at different rates, a few ppm differece is expected
+    uint64_t timestamp; // steady time
+    uint64_t timecode;  // sample counter
     
     // preamble-data
     // what is the optimal sampling point when reading
@@ -45,7 +58,7 @@ struct Frame {
     std::complex<float> correction = {1.0f, 0.0f}; // phase & magnitude correction
     
     Frame();
-    Frame(TransponderType transponder_type, uint64_t timestamp);
+    Frame(TransponderType transponder_type, uint64_t timestamp, uint64_t timecode);
 
     const uint8_t* bits();
     float rssi() const;

@@ -10,16 +10,20 @@
 #define TRANSPONDER_DETECTION_MSG_LIMIT (1<<12)
 
 // scipy.signal.firwin(11, 8, fs=128, window="hann")
-static std::vector<float> fir_coeffs = {
+static const std::vector<float> smoothing_fir = {
     0.00000000f, 0.01320163f, 0.0588375f,
     0.12796555f, 0.19141461f, 0.21716141f,
     0.19141461f, 0.12796555f, 0.0588375f,
     0.01320163f, 0.00000000f
 };
 
+uint64_t timecode_to_usec(uint64_t timecode) {
+    return timecode * 1000000ul / SAMPLE_RATE;
+}
+
 void PassingDetector::append(const Frame* frame, uint32_t transponder_id) {
     TransponderKey transponder_key = std::make_pair(frame->transponder_type, transponder_id);
-    Detection d(frame->timestamp, frame->rssi(), frame->evm());
+    Detection d(frame->timestamp, frame->timecode, frame->rssi());
     
     std::lock_guard<std::mutex> lock(mutex);
     detections[transponder_key].push_back(std::move(d));
@@ -170,25 +174,47 @@ std::vector<Peak> find_peaks(const std::vector<float>& y, float min_prominence =
     return result;
 }
 
-struct InflectionPoint {
-    uint64_t timestamp;
-    float rssi;
+struct PassingPoint {
+    uint64_t weighted_timestamp;
+    float max_rssi;
+    uint64_t duration;
 };
 
-void rssi_waveform_detect_peaks_valleys(
-    const std::deque<Detection>& detections,
-    std::vector<InflectionPoint>& peaks,
-    std::vector<InflectionPoint>& valleys
-) {
-    // normalize detection timestamp to [0,1] interval
-    uint64_t tmin = detections.front().timestamp;
-    uint64_t tmax = detections.back().timestamp;
-    float tdiff = static_cast<float>(tmax - tmin);
+// Calculate RSSI-weighted average timestamp for detections
+PassingPoint weigthed_passing(const std::deque<Detection>& detections, float max_rssi) {
+    float rssi_threshold = max_rssi - 6.0f;
+
+    float weighted_sum = 0.0f;
+    float weight_total = 0.0f;
+
+    // in "system time" mode, milisecond-resolution epock is used
+    // ms-resolution epoch is too large for floating point, and gets truncated
+    // if the offset is removed, we can keep using a weighted average
+    uint64_t offset = detections.front().timecode;
+
+    for (const auto& d : detections) {
+        if (d.rssi >= rssi_threshold) {
+            auto p = std::pow(10.0, d.rssi/20.0);
+            weighted_sum += static_cast<float>(d.timecode-offset) * p;
+            weight_total += p;
+        }
+    }
+
+    uint64_t timecode_average = static_cast<uint64_t>(weighted_sum / weight_total);
+    uint64_t weighted_timestamp = detections.front().timestamp + timecode_to_usec(timecode_average);
+    return {weighted_timestamp, max_rssi, 0};
+}
+
+std::tuple<std::vector<float>, uint64_t, uint64_t> resamp_uniform(const std::deque<Detection>& detections) {
+    // normalize detection timecode to [0,1] interval
+    uint64_t tc_min = detections.front().timecode;
+    uint64_t tc_max = detections.back().timecode;
+    uint64_t tc_diff = tc_max - tc_min;
     std::vector<float> t_sample(detections.size());
     std::transform(
         detections.begin(), detections.end(),
         t_sample.begin(),
-        [tmin, tdiff](const Detection d) { return static_cast<float>(d.timestamp - tmin) / tdiff; }
+        [tc_min, tc_diff](const Detection d) { return static_cast<float>(d.timecode - tc_min) / static_cast<float>(tc_diff); }
     );
 
     // Create grid of 128+1 points in [0,1]
@@ -206,48 +232,35 @@ void rssi_waveform_detect_peaks_valleys(
     );
     auto y_uniform = interp(t_uniform, t_sample, y_irregular);
 
-    // smooth rssi waveform by a FIR filter
-    // std::vector<float> y_smooth = filtfilt(fir_coeffs, y_uniform);
-
-    // find peaks in the smoothed dataset
-    auto rssi_peaks = find_peaks(y_uniform, 1.0f);
-    std::transform(
-        rssi_peaks.begin(), rssi_peaks.end(),
-        std::back_inserter(peaks),
-        [tmin, tdiff](const Peak p) -> InflectionPoint { return {tmin + static_cast<uint64_t>(p.index * tdiff / 128.0f), p.value }; }
-    );
-
-    // find valleys in the resampled data, higher prominence
-    std::transform(y_uniform.begin(), y_uniform.end(), y_uniform.begin(), [](float rssi) { return -rssi; });
-    auto rssi_valleys = find_peaks(y_uniform, 3.0f);
-    std::transform(
-        rssi_valleys.begin(), rssi_valleys.end(),
-        std::back_inserter(valleys),
-        [tmin, tdiff](const Peak p) -> InflectionPoint { return {tmin + static_cast<uint64_t>(p.index * tdiff / 128.0f), p.value}; }
-    );
+    return {y_uniform, tc_min, tc_diff};
 }
 
-struct PassingPoint {
-    uint64_t weighted_timestamp;
-    float max_rssi;
-    uint32_t duration;
-};
-
-// Calculate RSSI-weighted average timestamp for detections
-PassingPoint weigthed_passing(const std::deque<Detection>& detections, float max_rssi) {
-    float rssi_threshold = max_rssi - 6.0f;
-
-    float weighted_sum = 0.0f;
-    float weight_total = 0.0f;
-    for (const auto& d : detections) {
-        if (d.rssi >= rssi_threshold) {
-            weighted_sum += static_cast<float>(d.timestamp) * d.rssi;
-            weight_total += d.rssi;
+// Returns interpolated index where values first exceed threshold v.
+float first_crossing(const std::vector<float>& data, float v) {
+    if (data[0] >= v) {
+        return 0.0f;
+    }
+    for (size_t i = 1; i < data.size(); i++) {
+        if (data[i] >= v) {
+            float t = (v - data[i-1]) / (data[i] - data[i-1]);
+            return (i-1) + t;
         }
     }
+    return 0.f;
+}
 
-    uint64_t weighted_timestamp = static_cast<uint64_t>(weighted_sum / weight_total);
-    return {weighted_timestamp, max_rssi, 0};
+float last_crossing(const std::vector<float>& data, float v) {
+    int k = data.size() - 1;
+    if (data[k] >= v) {
+        return static_cast<float>(k);
+    }
+    for (size_t i = k-1; i > 0; i--) {
+        if (data[i] >= v) {
+            float t = (v - data[i+1]) / (data[i] - data[i+1]);
+            return (i+1) - t;
+        }
+    }
+    return static_cast<float>(k);
 }
 
 PassingPoint compute_passing_point(const std::deque<Detection>& detections) {
@@ -266,31 +279,44 @@ PassingPoint compute_passing_point(const std::deque<Detection>& detections) {
         return weigthed_passing(detections, max_rssi);
     }
 
-    // there are enough datapoints to pattern match on the waveform
-    std::vector<InflectionPoint> peaks, valleys;
-    rssi_waveform_detect_peaks_valleys(detections, peaks, valleys);
-
-    if (peaks.size() == 1) {
-        // low signal strength or bad transponder placement
-        return {peaks[0].timestamp, max_rssi, 0};
-    } else if (peaks.size() >= 2 && (valleys.size() == 2 || valleys.size()==3)) {
+    // there are enough datapoints to pattern match on the waveform; first resample to a uniform timegrid
+    const auto [y_uniform, tc_start, tc_duration] = resamp_uniform(detections);
+    // if the transponder was placed paralel to the detection antenna, and the antenna was close,
+    // there are two nulls right when the transponder passed over the loop wires
+    std::vector<float> y_peaking(129);
+    std::transform(y_uniform.begin(), y_uniform.end(), y_peaking.begin(), std::negate<float>{});
+    auto rssi_dips = find_peaks(y_peaking, 3.0f /* prominence in dB */);
+    if (rssi_dips.size() == 3) {
+        auto pass_duration = (rssi_dips[2].index - rssi_dips[0].index) * tc_duration / 128ul;
+        auto pass_timecode = tc_start + rssi_dips[0].index*tc_duration/128ul + pass_duration/2;
         return {
-            peaks.size() == 3 ? peaks[1].timestamp : ( (peaks[0].timestamp + peaks.back().timestamp) / 2 ),
+            timecode_to_usec(pass_timecode),
             max_rssi,
-            static_cast<uint32_t>(valleys.back().timestamp - valleys.front().timestamp)
+            timecode_to_usec(pass_duration)
         };
-    } else if (peaks.size() == 2) { // just peaks, no valleys
-        // if both peaks are similar in size, let's assume a transponder
-        // placement which peaks when transponder is right over the loop's wires
-        // if the peaks are of different signal levels, pass duration is not available
-        return {
-            (peaks[0].timestamp + peaks[1].timestamp) / 2, 
-            max_rssi,
-            abs(peaks[0].rssi - peaks[1].rssi) < 3.0f ? static_cast<uint32_t>(peaks[1].timestamp - peaks[0].timestamp) : 0
-        };
-    } else {
-        return weigthed_passing(detections, max_rssi);
     }
+    // no dual dips were detected, try find double peaks on a smoothed transition waveform
+    auto y_smoothed = filtfilt(smoothing_fir, y_uniform);
+    auto rssi_peaks = find_peaks(y_smoothed, 1.0f /* dB */);
+    if (rssi_peaks.size() == 2) {
+        auto pass_duration = (rssi_peaks[1].index - rssi_peaks[0].index) * tc_duration / 128ul;
+        auto pass_timecode = tc_start + rssi_peaks[0].index*tc_duration/128ul + pass_duration/2;
+        return {
+            timecode_to_usec(pass_timecode),
+            max_rssi,
+            timecode_to_usec(pass_duration)
+        };
+    }
+    // fall back to default:
+    // find the first and last time when the waveform passed the peak-6dB mark,
+    // the passing point should be inbetween
+    float max_smoothed = *std::max_element(y_smoothed.begin(), y_smoothed.end());
+    float idx_first = first_crossing(y_smoothed, max_smoothed-6.0f);
+    float idx_last = last_crossing(y_smoothed, max_smoothed-6.0f);
+    float pass_width = idx_last-idx_first;
+    uint64_t pass_timecode = tc_start + static_cast<uint64_t>((idx_first+pass_width/2.0f)/128.0f*tc_duration);
+
+    return {timecode_to_usec(pass_timecode), max_rssi, 0 };
 }
 
 Passing create_passing(TransponderKey transponder_key, const std::deque<Detection>& detections) {
@@ -341,8 +367,9 @@ std::vector<TimeSync> PassingDetector::identify_timesyncs(uint64_t margin) {
 
         for (const auto& [transponder_key, detection_vec] : detections) {
             if (detection_vec.empty()) { continue; }
-            bool front_ok = (detection_vec.front().timestamp - margin) < ts_msg.timestamp;
-            bool back_ok = (detection_vec.back().timestamp + margin) > ts_msg.timestamp;
+            // margin makes sure two consequtive passings do not leave a timesync inbetween
+            bool front_ok = (detection_vec.front().timestamp - margin) < ts_msg.decoder_timestamp;
+            bool back_ok = (detection_vec.back().timestamp + margin) > ts_msg.decoder_timestamp;
             if  (front_ok && back_ok) {
                 ++matching_transponder_count;
                 matching_transponder = transponder_key;
@@ -350,7 +377,7 @@ std::vector<TimeSync> PassingDetector::identify_timesyncs(uint64_t margin) {
         }
         if (matching_transponder_count == 1) {
             TimeSync ts = {
-                .timestamp = ts_msg.timestamp,
+                .timestamp = ts_msg.decoder_timestamp,
                 .transponder_type = matching_transponder.first,
                 .transponder_id = matching_transponder.second,
                 .transponder_timestamp = ts_msg.transponder_timestamp

@@ -21,11 +21,35 @@ static std::atomic<bool> do_exit(false);
 
 static const uint64_t CENTER_FREQ_HZ       = 5000000ULL;
 static const int DEFAULT_GAIN_TENTHS_DB    = 200;           // dB
+static const int RTL_BUFFER_SIZE           = 16*32*512;     // largest, less prone to data loss
+
+static std::vector<std::complex<int8_t>> conversion_buffer(RTL_BUFFER_SIZE/2);
 
 // signal handler to break the capture loop
 void signal_handler(int signum) {
     std::cerr << "\nCaught signal " << signum << " — stopping...\n";
     do_exit = true;
+}
+
+// rtlsdr async callback invoked for each block of data
+extern "C" void rx_callback(unsigned char* buf, uint32_t len, void* ctx) {
+    (void)ctx;
+    if (do_exit) return;
+
+    uint32_t sample_count = len / 2;
+    if (conversion_buffer.size() < sample_count) {
+        conversion_buffer.resize(sample_count);
+    }
+    // RTL-SDR provides unsigned uint8_t samples (0-255, DC at 128).
+    // Convert to signed int8_t (-128 to 127, DC at 0) for commons.cpp.
+    for (uint32_t i = 0; i < sample_count; ++i) {
+        conversion_buffer[i] = std::complex<int8_t>(
+            static_cast<int8_t>(buf[2 * i]     - 128),
+            static_cast<int8_t>(buf[2 * i + 1] - 128)
+        );
+    }
+
+    detect_frames(conversion_buffer.data(), sample_count);
 }
 
 int main(int argc, char** argv) {
@@ -36,11 +60,6 @@ int main(int argc, char** argv) {
     int gain_tenths_db = DEFAULT_GAIN_TENTHS_DB;
     bool bias_tee = false;
     const char* serial = nullptr;
-
-    // read buffers:
-    std::vector<std::complex<int8_t>> conversion_buffer(16384);
-    std::vector<uint8_t> read_buf(32768);
-    int n_read = 0;
 
     // process command line arguments
     for (int i = 1; i < argc; ++i) {
@@ -167,33 +186,26 @@ int main(int argc, char** argv) {
     // reset buffer to clear stale data
     rtlsdr_reset_buffer(device);
 
-    // main loop — exit when handler sets do_exit
-    while (!do_exit) {
-        int r = rtlsdr_read_sync(device, read_buf.data(), read_buf.size(), &n_read);
-        if (r != 0) {
-            std::fprintf(stderr, "rtlsdr_read_sync() failed: %d\n", r);
-            break;
-        }
-        if (n_read == 0) {
-            continue;
+    {
+        // run async read in a background thread (rtlsdr_read_async blocks until cancelled)
+        std::thread async_thread([&]() {
+            int r = rtlsdr_read_async(device, rx_callback, nullptr, 0, RTL_BUFFER_SIZE);
+            if (r != 0 && !do_exit) {
+                std::fprintf(stderr, "rtlsdr_read_async() failed: %d\n", r);
+                do_exit = true;
+            }
+        });
+
+        std::cerr << "Streaming... stop with Ctrl-C\n";
+
+        // main loop — exit when handler sets do_exit
+        while (!do_exit) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+            report_detections();
         }
 
-        unsigned int sample_count = n_read / 2;
-        if (conversion_buffer.size() < sample_count) {
-            conversion_buffer.resize(sample_count);
-        }
-        // RTL-SDR provides unsigned uint8_t samples (0-255, DC at 128).
-        // Convert to signed int8_t (-128 to 127, DC at 0) for commons.cpp.
-        for (uint32_t i = 0; i < sample_count; ++i) {
-            conversion_buffer[i] = std::complex<int8_t>(
-                static_cast<int8_t>(read_buf[2 * i]     - 128),
-                static_cast<int8_t>(read_buf[2 * i + 1] - 128)
-            );
-        }
-
-        // call into commons.cpp:
-        detect_frames(conversion_buffer.data(), sample_count);
-        report_detections();
+        rtlsdr_cancel_async(device);
+        async_thread.join();
     }
 
 cleanup:

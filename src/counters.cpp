@@ -1,10 +1,10 @@
 #include "counters.hpp"
 
-#define REPORTING_PERIOD 5000
+#define REPORTING_PERIOD_US 5000000
 
 
 bool RxStatistics::reporting_due(uint64_t current_timestamp) {
-    return current_timestamp >= last_reset_timestamp + REPORTING_PERIOD;
+    return current_timestamp >= last_reset_timestamp + REPORTING_PERIOD_US;
 }
 
 void RxStatistics::register_frame(bool processed) {
@@ -25,7 +25,7 @@ void RxStatistics::reset(uint64_t current_timestamp) {
     std::lock_guard<std::mutex> lock(mutex);
 
     frames_received = 0;
-    frames_processed = 0; 
+    frames_processed = 0;
     last_reset_timestamp = current_timestamp;
 }
 
@@ -41,7 +41,7 @@ std::string RxStatistics::to_string() {
     
     std::string temp;
     std::format_to(
-        std::back_inserter(temp), "{} {} {} {}", 
+        std::back_inserter(temp), "{:.2f} {:.2f} {} {}",
         noise_floor, 
         std::abs(dc_offset), 
         frames_received,

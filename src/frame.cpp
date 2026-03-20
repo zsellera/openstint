@@ -20,10 +20,11 @@ Frame::Frame() {
     softbits.reserve(FRAME_MAX_SYMBOL_SPACE);
     symbols.reserve(FRAME_MAX_SYMBOL_SPACE);
     timestamp = 0;
+    timecode = 0;
 }
 
-Frame::Frame(TransponderType _ttype, uint64_t _ts)
-    : transponder_type(_ttype), timestamp(_ts) {
+Frame::Frame(TransponderType _ttype, uint64_t _ts, uint64_t _tc)
+    : transponder_type(_ttype), timestamp(_ts), timecode(_tc) {
     softbits.reserve(FRAME_MAX_SYMBOL_SPACE);
     symbols.reserve(FRAME_MAX_SYMBOL_SPACE);
     payload_size = transponder_props(transponder_type).payload_size;
@@ -115,7 +116,8 @@ std::ostream& operator <<(std::ostream& os, const Frame& f) {
     std::stringstream sbits;
     std::copy(f.softbits.begin(), f.softbits.end(), std::ostream_iterator<int>(sbits, ", "));
     return os << transponder_props(f.transponder_type).prefix
-              << " T:" << f.timestamp
+              << " TS:" << (f.timestamp/1000)
+              << " TC:" << f.timecode
               << " RSSI:" << f.rssi()
               << " EVM:" << f.evm()
               << " FREQ:" << (f.frequency / (2.0f * 3.14) * 1250000.0f)
