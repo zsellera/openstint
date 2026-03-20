@@ -22,6 +22,7 @@ set(OPENSTINT_BASE_SOURCES
     passing.cpp
     counters.cpp
     commons.cpp
+    rc4.cpp
 )
 
 # Required dependencies

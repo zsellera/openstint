@@ -23,11 +23,11 @@ Frame::Frame() {
     timecode = 0;
 }
 
-Frame::Frame(TransponderType _ttype, uint64_t _ts, uint64_t _tc)
-    : transponder_type(_ttype), timestamp(_ts), timecode(_tc) {
+Frame::Frame(TransponderProtocol _ttype, uint64_t _ts, uint64_t _tc)
+    : transponder_protocol(_ttype), timestamp(_ts), timecode(_tc) {
     softbits.reserve(FRAME_MAX_SYMBOL_SPACE);
     symbols.reserve(FRAME_MAX_SYMBOL_SPACE);
-    payload_size = transponder_props(transponder_type).payload_size;
+    payload_size = transponder_props(transponder_protocol).payload_size;
     preamble_size = 16;
 }
 
@@ -65,10 +65,10 @@ const uint8_t* Frame::bits() {
 
     // start-of-frame 32 bits contain the preamble
     uint32_t sof = concat_bits32(softbits.data());
-    int pos = preamble_pos(sof, transponder_props(transponder_type).bpsk_preamble);
+    int pos = preamble_pos(sof, transponder_props(transponder_protocol).bpsk_preamble);
     if (pos < 0) {
         // try with bits inverted:
-        pos = preamble_pos(~sof, transponder_props(transponder_type).bpsk_preamble);
+        pos = preamble_pos(~sof, transponder_props(transponder_protocol).bpsk_preamble);
         if (pos < 0) { // preamble not found
             return nullptr;
         } else { // preamble found, but BPSK does not know the correct phase
@@ -115,7 +115,7 @@ std::ostream& operator <<(std::ostream& os, const Frame& f) {
         });
     std::stringstream sbits;
     std::copy(f.softbits.begin(), f.softbits.end(), std::ostream_iterator<int>(sbits, ", "));
-    return os << transponder_props(f.transponder_type).prefix
+    return os << transponder_props(f.transponder_protocol).prefix
               << " TS:" << (f.timestamp/1000)
               << " TC:" << f.timecode
               << " RSSI:" << f.rssi()
@@ -129,7 +129,7 @@ std::ostream& operator <<(std::ostream& os, const Frame& f) {
 
 FrameDetector::FrameDetector(float _threshold) : threshold(_threshold) {};
 
-std::optional<TransponderType> FrameDetector::process_baseband(const std::complex<int8_t> *samples) {
+std::optional<TransponderProtocol> FrameDetector::process_baseband(const std::complex<int8_t> *samples) {
     // remove dc-offset + calculate magninude^2 of each sample
     std::complex<int8_t> sb[samples_per_symbol];
     uint16_t mag2s[samples_per_symbol];
@@ -162,10 +162,13 @@ std::optional<TransponderType> FrameDetector::process_baseband(const std::comple
 
     // run matchers
     if (buffers[idx].match_preamble(p_openstint) > threshold) {
-        return TransponderType::OpenStint;
+        return TransponderProtocol::OpenStint;
     }
-    if (buffers[idx].match_preamble(p_legacy) > threshold) {
-        return TransponderType::Legacy;
+    if (buffers[idx].match_preamble(p_rc3) > threshold) {
+        return TransponderProtocol::RC3;
+    }
+    if (buffers[idx].match_preamble(p_rc4) > threshold) {       
+        return TransponderProtocol::RC4;
     }
     return std::nullopt;
 }

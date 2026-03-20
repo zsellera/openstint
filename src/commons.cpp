@@ -14,6 +14,7 @@
 #include "frame.hpp"
 #include "passing.hpp"
 #include "counters.hpp"
+#include "rc4.hpp"
 
 using namespace std::chrono;
 
@@ -32,6 +33,8 @@ static const uint64_t startup_ts = duration_cast<microseconds>(steady_clock::now
 static bool mode_sysclk = false;
 static uint64_t timecode = 0ul;
 
+static RC4Registry rc4_registry;
+static RC4Trainer rc4_trainer;
 
 bool process_frame(Frame* frame) {
     if (monitor_mode) {
@@ -45,8 +48,8 @@ bool process_frame(Frame* frame) {
     }
 
     uint32_t transponder_id;
-    switch (frame->transponder_type) {
-        case TransponderType::OpenStint:
+    switch (frame->transponder_protocol) {
+        case TransponderProtocol::OpenStint:
         if (decode_openstint(softbits, &transponder_id)) {
             if (transponder_id < 10000000u) {
                 passing_detector.append(frame, transponder_id);
@@ -57,14 +60,23 @@ bool process_frame(Frame* frame) {
             return true;
         }
         break;
-        case TransponderType::Legacy:
-        if (decode_legacy(softbits, &transponder_id)) {
+        case TransponderProtocol::RC3:
+        if (decode_rc3(softbits, &transponder_id)) {
             if (transponder_id < 10000000) { // extra check (7-digit max)
                 passing_detector.append(frame, transponder_id);
             }
             return true;
         }
         break;
+        case TransponderProtocol::RC4:
+        RC4Message msg(softbits);
+        if (rc4_registry.lookup(msg, &transponder_id)) {
+            passing_detector.append(frame, transponder_id);
+            rc4_trainer.append(frame->timestamp, frame->rssi(), transponder_id, softbits);
+            return true;
+        }
+        rc4_trainer.append(frame->timestamp, frame->rssi(), 0, softbits);
+        return false;
     }
     return false;
 }
@@ -75,7 +87,7 @@ void detect_frames(const std::complex<int8_t>* samples, std::size_t sample_count
     bool frame_detected = false;
     for (uint32_t idx=0; (idx+SAMPLES_PER_SYMBOL)<=sample_count; idx+=SAMPLES_PER_SYMBOL) {
         if (frame_parse_mode == FRAME_SEEK) {
-            const std::optional<TransponderType> detected = frame_detector.process_baseband(samples+idx);
+            const std::optional<TransponderProtocol> detected = frame_detector.process_baseband(samples+idx);
             if (detected) {
                 frame_parse_mode = FRAME_FOUND;
                 frame_detected = true; // do not use this buffer for noisefloor calculation
@@ -153,11 +165,12 @@ uint64_t reporting_timestamp(uint64_t timestamp_us, uint64_t steady_now, uint64_
 void report_detections() {
     const uint64_t now_sysclk = duration_cast<microseconds>(system_clock::now().time_since_epoch()).count();
     const uint64_t now_ts = duration_cast<microseconds>(steady_clock::now().time_since_epoch()).count() - startup_ts;
+    const uint64_t status_ts = reporting_timestamp(now_ts, now_ts, now_sysclk);
 
     // report status once a second
     if (rx_stats.reporting_due(now_ts)) {
         const std::string report = std::format("S {} {}",
-            reporting_timestamp(now_ts, now_ts, now_sysclk),
+            status_ts,
             rx_stats.to_string()
         );
         rx_stats.reset(now_ts);
@@ -170,7 +183,7 @@ void report_detections() {
     for (const auto& time_sync : timesyncs) {
         const std::string report = std::format("T {} {} {} {}",
             reporting_timestamp(time_sync.timestamp, now_ts, now_sysclk),
-            transponder_props(time_sync.transponder_type).prefix, // always openstint
+            transponder_system_name(time_sync.transponder_type), // always openstint
             time_sync.transponder_id,
             time_sync.transponder_timestamp
         );
@@ -183,7 +196,7 @@ void report_detections() {
     for (const auto& passing : passings) {
         const std::string report = std::format("P {} {} {} {:.2f} {} {}",
             reporting_timestamp(passing.timestamp, now_ts, now_sysclk),
-            transponder_props(passing.transponder_type).prefix,
+            transponder_system_name(passing.transponder_type),
             passing.transponder_id,
             passing.rssi,
             passing.hits,
@@ -192,5 +205,44 @@ void report_detections() {
 
         std::cout << report << std::endl;
         publisher->send(zmq::buffer(report), zmq::send_flags::none);
+    }
+
+    auto trainer_result = rc4_trainer.evaluate(now_ts);
+    switch (trainer_result) {
+        case RC4Trainer::EvaluationResult::START: {
+            const auto report = std::format("L {} START", status_ts);
+            std::cout << report << std::endl;
+            publisher->send(zmq::buffer(report), zmq::send_flags::none);
+        }
+        break;
+        case RC4Trainer::EvaluationResult::INTERRUPED: {
+            const auto report = std::format("L {} INTERRUPTED", status_ts);
+            std::cout << report << std::endl;
+            publisher->send(zmq::buffer(report), zmq::send_flags::none);
+        }
+        break;
+        case RC4Trainer::EvaluationResult::DONE: {
+            uint32_t transponder_id = rc4_trainer.preferred_transponder_id();
+            auto messages = rc4_trainer.registry_messages();
+            auto [tsmin, tsmax] = rc4_trainer.buffer_timerange();
+            auto detected_transponders = passing_detector.passings_between(TransponderSystem::AMB, tsmin, tsmax);
+            if (transponder_id == 0 && detected_transponders.size() == 1) {
+                transponder_id = detected_transponders.front();
+            }
+            rc4_registry.store(transponder_id, messages);
+            const auto report = std::format("L {} DONE {} {}", status_ts, transponder_id, messages.size());
+            std::cout << report << std::endl;
+            publisher->send(zmq::buffer(report), zmq::send_flags::none);
+        }
+        break;
+        case RC4Trainer::EvaluationResult::RESET: {
+            const auto report = std::format("L {} RESET", status_ts);
+            std::cout << report << std::endl;
+            publisher->send(zmq::buffer(report), zmq::send_flags::none);
+        }
+        break;
+        case RC4Trainer::EvaluationResult::NO_ACTION:
+        // no action
+        break;
     }
 }

@@ -26,7 +26,7 @@ int decode_openstint(const uint8_t *softbits, uint32_t *transponder_id) {
     return crc_validate_message(crc8_scheme, decoded, 3, decoded[3]);
 }
 
-int decode_legacy(const uint8_t *softbits, uint32_t *transponder_id) {
+int decode_rc3(const uint8_t *softbits, uint32_t *transponder_id) {
     // RC3 use a K=24, r=1/2 convolutional encoder with polynoms 0xEEC20F and 0xEEC20D
     // Decoding this properly with error correction must have some unknown trick. However,
     // we can do non-trivial decoding as well.
