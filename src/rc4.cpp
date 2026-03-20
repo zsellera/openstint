@@ -34,6 +34,8 @@ std::ostream &operator<<(std::ostream &os, const RC4Message &m) {
 }
 
 bool RC4Registry::lookup(const RC4Message &message, uint32_t *transponder_id) {
+    std::shared_lock<std::shared_mutex> read_lock(mutex);
+
     auto it = registry.find(message);
     if (it == registry.end())
         return false;
@@ -42,6 +44,8 @@ bool RC4Registry::lookup(const RC4Message &message, uint32_t *transponder_id) {
 }
 
 void RC4Registry::store(uint32_t transponder_id, std::vector<RC4Message> messages) {
+    std::unique_lock<std::shared_mutex> write_lock(mutex);
+
     if (transponder_id == 0) {
         transponder_id = (next_transponder++);
     }
@@ -50,12 +54,16 @@ void RC4Registry::store(uint32_t transponder_id, std::vector<RC4Message> message
 }
 
 void RC4Trainer::append(uint64_t timestamp, float rssi, uint32_t transponder_id, RC4Message message) {
+    std::lock_guard<std::mutex> lock(mutex);
+
     buffer.push_back({timestamp, rssi, transponder_id, message});
     if (buffer.size() > BUFFER_MAX_SIZE)
         buffer.pop_front();
 }
 
 RC4Trainer::EvaluationResult RC4Trainer::evaluate(uint64_t timestamp) {
+    std::lock_guard<std::mutex> lock(mutex);
+
     switch (state) {
         case state_t::IDLE: {
             if (buffer.size() < 128) break;
@@ -113,6 +121,8 @@ RC4Trainer::EvaluationResult RC4Trainer::evaluate(uint64_t timestamp) {
 }
 
 std::vector<RC4Message> RC4Trainer::registry_messages() {
+    std::lock_guard<std::mutex> lock(mutex);
+
     // find repeating messages by counting them:
     std::map<RC4Message, int> counts;
     for (const auto &e : buffer) {
@@ -129,6 +139,8 @@ std::vector<RC4Message> RC4Trainer::registry_messages() {
 }
 
 uint32_t RC4Trainer::preferred_transponder_id() {
+    std::lock_guard<std::mutex> lock(mutex);
+
     // if any of the messages were from a previous training, find
     // the preferred transponder id:
     auto known = std::find_if(
@@ -139,5 +151,6 @@ uint32_t RC4Trainer::preferred_transponder_id() {
 }
 
 std::pair<uint64_t, uint64_t> RC4Trainer::buffer_timerange() {
+    std::lock_guard<std::mutex> lock(mutex);
     return std::make_pair(buffer.front().timestamp, buffer.back().timestamp);
 }

@@ -4,6 +4,8 @@
 #include <string>
 #include <deque>
 #include <map>
+#include <mutex>
+#include <shared_mutex>
 #include <vector>
 #include <optional>
 
@@ -21,6 +23,7 @@ struct RC4Message {
 };
 
 class RC4Registry {
+    std::shared_mutex mutex;
     std::map<RC4Message, uint32_t> registry;
     uint32_t next_transponder = 1000u;
 
@@ -39,6 +42,7 @@ class RC4Trainer {
         RC4Message message;
     };
 
+    std::mutex mutex;
     enum state_t { IDLE, TRAINING, FINALIZING } state = IDLE;
     std::deque<Entry> buffer;
 
