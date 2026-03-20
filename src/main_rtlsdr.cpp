@@ -101,21 +101,43 @@ int main(int argc, char** argv) {
         std::fprintf(stderr, "rtlsdr_open() failed: %d\n", result);
         return EXIT_FAILURE;
     }
+    
+    // --- Updated detection logic for cross-platform compatibility ---
 
-    // print device info and detect V4
     bool is_v4 = false;
-    const char* name = rtlsdr_get_device_name(device_index);
-    char manufact[256], product[256], sn[256];
-    if (rtlsdr_get_device_usb_strings(device_index, manufact, product, sn) == 0) {
-        is_v4 = std::strstr(product, "V4") != nullptr;
-        std::printf("RTL-SDR: %s (SN: %s)\n", name, sn);
+    char manufact[256] = {0}, product[256] = {0}, sn[256] = {0};
+
+    // 1. Attempt to retrieve USB strings. 
+    // Note: On Windows, calling rtlsdr_get_usb_strings(device, ...) after rtlsdr_open 
+    // is more reliable than using the device index before opening.
+    if (rtlsdr_get_usb_strings(device, manufact, product, sn) == 0) {
+        if (std::strstr(product, "V4") != nullptr) {
+            is_v4 = true;
+        }
+        std::printf("RTL-SDR: %s (SN: %s)\n", product, sn);
     } else {
-        std::printf("RTL-SDR: %s\n", name);
+        // Fallback: If USB string retrieval fails, identify by device index name
+        const char* name = rtlsdr_get_device_name(device_index);
+        std::printf("RTL-SDR: %s (Warning: Unable to retrieve USB strings)\n", name);
     }
 
-    // RTL-SDR Blog V4 has an on-board HF mixer and can receive 5 MHz natively.
-    // All other dongles need direct sampling mode for HF reception.
-    if (!is_v4) {
+    // 2. Hardware-level verification via Tuner Type.
+    // RTL-SDR Blog V4 uses the R828D tuner, whereas V3 typically uses R820T2.
+    // This is the most robust detection method if USB descriptors are blocked by drivers.
+    enum rtlsdr_tuner tuner_type = rtlsdr_get_tuner_type(device);
+    if (tuner_type == RTLSDR_TUNER_R828D) {
+        if (!is_v4) {
+            std::printf("RTL-SDR Blog V4 detected via Tuner Type (R828D)\n");
+            is_v4 = true;
+        }
+    }
+
+    // RTL-SDR Blog V4 features an integrated HF upconverter (Frequency Upconverter/Mixer)
+    // allowing native HF reception without direct sampling.
+    if (is_v4) {
+        std::printf("V4 Mode: Native HF reception enabled.\n");
+    } else {
+        // Older dongles (V3 and generic) require Direct Sampling Mode (Q-branch) for HF.
         std::fprintf(stderr, "Non-V4 dongle detected — enabling direct sampling (Q-branch)\n");
         result = rtlsdr_set_direct_sampling(device, 2);
         if (result != 0) {
@@ -123,6 +145,8 @@ int main(int argc, char** argv) {
             goto cleanup;
         }
     }
+
+    // --- End of detection logic ---
 
     // set center frequency
     result = rtlsdr_set_center_freq(device, freq_hz);

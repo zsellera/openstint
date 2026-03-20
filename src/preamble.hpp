@@ -86,6 +86,7 @@ public:
         // create a statistics that can predict how well
         // the pattern fits to the sample.
         return static_cast<float>(c2) / (window_energy * 16);
+      
     }
 
     uint32_t energy() const { return window_energy; }
