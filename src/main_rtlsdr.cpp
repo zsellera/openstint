@@ -21,35 +21,11 @@ static std::atomic<bool> do_exit(false);
 
 static const uint64_t CENTER_FREQ_HZ       = 5000000ULL;
 static const int DEFAULT_GAIN_TENTHS_DB    = 200;           // dB
-static const int RTL_BUFFER_SIZE           = 16*32*512;     // largest, less prone to data loss
-
-static std::vector<std::complex<int8_t>> conversion_buffer(RTL_BUFFER_SIZE/2);
 
 // signal handler to break the capture loop
 void signal_handler(int signum) {
     std::cerr << "\nCaught signal " << signum << " — stopping...\n";
     do_exit = true;
-}
-
-// rtlsdr async callback invoked for each block of data
-extern "C" void rx_callback(unsigned char* buf, uint32_t len, void* ctx) {
-    (void)ctx;
-    if (do_exit) return;
-
-    uint32_t sample_count = len / 2;
-    if (conversion_buffer.size() < sample_count) {
-        conversion_buffer.resize(sample_count);
-    }
-    // RTL-SDR provides unsigned uint8_t samples (0-255, DC at 128).
-    // Convert to signed int8_t (-128 to 127, DC at 0) for commons.cpp.
-    for (uint32_t i = 0; i < sample_count; ++i) {
-        conversion_buffer[i] = std::complex<int8_t>(
-            static_cast<int8_t>(buf[2 * i]     - 128),
-            static_cast<int8_t>(buf[2 * i + 1] - 128)
-        );
-    }
-
-    detect_frames(conversion_buffer.data(), sample_count);
 }
 
 int main(int argc, char** argv) {
@@ -60,6 +36,11 @@ int main(int argc, char** argv) {
     int gain_tenths_db = DEFAULT_GAIN_TENTHS_DB;
     bool bias_tee = false;
     const char* serial = nullptr;
+
+    // read buffers:
+    std::vector<std::complex<int8_t>> conversion_buffer(16384);
+    std::vector<uint8_t> read_buf(32768);
+    int n_read = 0;
 
     // process command line arguments
     for (int i = 1; i < argc; ++i) {
@@ -120,21 +101,43 @@ int main(int argc, char** argv) {
         std::fprintf(stderr, "rtlsdr_open() failed: %d\n", result);
         return EXIT_FAILURE;
     }
+    
+    // --- Updated detection logic for cross-platform compatibility ---
 
-    // print device info and detect V4
     bool is_v4 = false;
-    const char* name = rtlsdr_get_device_name(device_index);
-    char manufact[256], product[256], sn[256];
-    if (rtlsdr_get_device_usb_strings(device_index, manufact, product, sn) == 0) {
-        is_v4 = std::strstr(product, "V4") != nullptr;
-        std::printf("RTL-SDR: %s (SN: %s)\n", name, sn);
+    char manufact[256] = {0}, product[256] = {0}, sn[256] = {0};
+
+    // 1. Attempt to retrieve USB strings. 
+    // Note: On Windows, calling rtlsdr_get_usb_strings(device, ...) after rtlsdr_open 
+    // is more reliable than using the device index before opening.
+    if (rtlsdr_get_usb_strings(device, manufact, product, sn) == 0) {
+        if (std::strstr(product, "V4") != nullptr) {
+            is_v4 = true;
+        }
+        std::printf("RTL-SDR: %s (SN: %s)\n", product, sn);
     } else {
-        std::printf("RTL-SDR: %s\n", name);
+        // Fallback: If USB string retrieval fails, identify by device index name
+        const char* name = rtlsdr_get_device_name(device_index);
+        std::printf("RTL-SDR: %s (Warning: Unable to retrieve USB strings)\n", name);
     }
 
-    // RTL-SDR Blog V4 has an on-board HF mixer and can receive 5 MHz natively.
-    // All other dongles need direct sampling mode for HF reception.
-    if (!is_v4) {
+    // 2. Hardware-level verification via Tuner Type.
+    // RTL-SDR Blog V4 uses the R828D tuner, whereas V3 typically uses R820T2.
+    // This is the most robust detection method if USB descriptors are blocked by drivers.
+    enum rtlsdr_tuner tuner_type = rtlsdr_get_tuner_type(device);
+    if (tuner_type == RTLSDR_TUNER_R828D) {
+        if (!is_v4) {
+            std::printf("RTL-SDR Blog V4 detected via Tuner Type (R828D)\n");
+            is_v4 = true;
+        }
+    }
+
+    // RTL-SDR Blog V4 features an integrated HF upconverter (Frequency Upconverter/Mixer)
+    // allowing native HF reception without direct sampling.
+    if (is_v4) {
+        std::printf("V4 Mode: Native HF reception enabled.\n");
+    } else {
+        // Older dongles (V3 and generic) require Direct Sampling Mode (Q-branch) for HF.
         std::fprintf(stderr, "Non-V4 dongle detected — enabling direct sampling (Q-branch)\n");
         result = rtlsdr_set_direct_sampling(device, 2);
         if (result != 0) {
@@ -142,6 +145,8 @@ int main(int argc, char** argv) {
             goto cleanup;
         }
     }
+
+    // --- End of detection logic ---
 
     // set center frequency
     result = rtlsdr_set_center_freq(device, freq_hz);
@@ -186,26 +191,33 @@ int main(int argc, char** argv) {
     // reset buffer to clear stale data
     rtlsdr_reset_buffer(device);
 
-    {
-        // run async read in a background thread (rtlsdr_read_async blocks until cancelled)
-        std::thread async_thread([&]() {
-            int r = rtlsdr_read_async(device, rx_callback, nullptr, 0, RTL_BUFFER_SIZE);
-            if (r != 0 && !do_exit) {
-                std::fprintf(stderr, "rtlsdr_read_async() failed: %d\n", r);
-                do_exit = true;
-            }
-        });
-
-        std::cerr << "Streaming... stop with Ctrl-C\n";
-
-        // main loop — exit when handler sets do_exit
-        while (!do_exit) {
-            std::this_thread::sleep_for(std::chrono::milliseconds(100));
-            report_detections();
+    // main loop — exit when handler sets do_exit
+    while (!do_exit) {
+        int r = rtlsdr_read_sync(device, read_buf.data(), read_buf.size(), &n_read);
+        if (r != 0) {
+            std::fprintf(stderr, "rtlsdr_read_sync() failed: %d\n", r);
+            break;
+        }
+        if (n_read == 0) {
+            continue;
         }
 
-        rtlsdr_cancel_async(device);
-        async_thread.join();
+        unsigned int sample_count = n_read / 2;
+        if (conversion_buffer.size() < sample_count) {
+            conversion_buffer.resize(sample_count);
+        }
+        // RTL-SDR provides unsigned uint8_t samples (0-255, DC at 128).
+        // Convert to signed int8_t (-128 to 127, DC at 0) for commons.cpp.
+        for (uint32_t i = 0; i < sample_count; ++i) {
+            conversion_buffer[i] = std::complex<int8_t>(
+                static_cast<int8_t>(read_buf[2 * i]     - 128),
+                static_cast<int8_t>(read_buf[2 * i + 1] - 128)
+            );
+        }
+
+        // call into commons.cpp:
+        detect_frames(conversion_buffer.data(), sample_count);
+        report_detections();
     }
 
 cleanup:
