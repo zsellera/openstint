@@ -1,6 +1,10 @@
 #include "rc4.hpp"
 
 #include <algorithm>
+#include <filesystem>
+#include <fstream>
+#include <iostream>
+#include <set>
 #include <string>
 
 RC4Message::RC4Message(const uint8_t *softbits) {
@@ -33,6 +37,18 @@ std::ostream &operator<<(std::ostream &os, const RC4Message &m) {
     return os << m.toString();
 }
 
+std::optional<RC4Message> RC4Message::fromString(const std::string &s) {
+    if (s.size() != 28) return std::nullopt;
+    try {
+        RC4Message msg;
+        msg.hi = std::stoull(s.substr(0, 12), nullptr, 16);
+        msg.lo = std::stoull(s.substr(12, 16), nullptr, 16);
+        return msg;
+    } catch (...) {
+        return std::nullopt;
+    }
+}
+
 bool RC4Registry::lookup(const RC4Message &message, uint32_t *transponder_id) {
     std::shared_lock<std::shared_mutex> read_lock(mutex);
 
@@ -43,22 +59,109 @@ bool RC4Registry::lookup(const RC4Message &message, uint32_t *transponder_id) {
     return true;
 }
 
-void RC4Registry::store(uint32_t transponder_id, std::vector<RC4Message> messages) {
+uint32_t RC4Registry::store(uint32_t transponder_id, std::vector<RC4Message> messages) {
     std::unique_lock<std::shared_mutex> write_lock(mutex);
 
+    if (transponder_id >= 1000 && transponder_id <= 9999) {
+        if (transponder_id + 1 > next_transponder) {
+            next_transponder = transponder_id + 1;
+        }
+    }
     if (transponder_id == 0) {
         transponder_id = (next_transponder++);
     }
-    for (const auto &msg : messages)
+    for (const auto &msg : messages) {
         registry[msg] = transponder_id;
+    }
+
+    return transponder_id;
+}
+
+void RC4Registry::remove(uint32_t transponder_id) {
+    std::unique_lock<std::shared_mutex> write_lock(mutex);
+
+    for (auto it = registry.begin(); it != registry.end(); ) {
+        if (it->second == transponder_id) {
+            it = registry.erase(it);
+        } else {
+            ++it;
+        }
+    }
+}
+
+void RC4Registry::resync() {
+    // do nothing, work in-memory only
+}
+
+RC4FileBasedRegistry::RC4FileBasedRegistry(std::string directory)
+    : directory(std::move(directory)) {}
+
+uint32_t RC4FileBasedRegistry::store(uint32_t transponder_id, std::vector<RC4Message> messages) {
+    transponder_id = RC4Registry::store(transponder_id, messages);
+    loaded_ids.insert(transponder_id);
+
+    std::ofstream file(directory + "/" + std::to_string(transponder_id) + ".rc4", std::ios::app);
+    for (const auto &msg : messages) {
+        file << msg << "\n";
+    }
+
+    return transponder_id;
+}
+
+void RC4FileBasedRegistry::resync() {
+    namespace fs = std::filesystem;
+
+    std::set<uint32_t> current_ids;
+
+    for (const auto &entry : fs::directory_iterator(directory)) {
+        if (!entry.is_regular_file()) { continue; }
+        const auto &path = entry.path();
+        if (path.extension() != ".rc4") { continue; }
+
+        const std::string stem = path.stem().string();
+        if (stem.empty() || !std::all_of(stem.begin(), stem.end(), ::isdigit)) {
+            continue;
+        }
+
+        uint32_t id;
+        try { id = std::stoul(stem); } catch (...) { continue; }
+
+        current_ids.insert(id);
+        if (loaded_ids.count(id)) { continue; }
+
+        std::ifstream file(path);
+        std::string line;
+        std::vector<RC4Message> messages;
+        while (std::getline(file, line)) {
+            auto msg = RC4Message::fromString(line);
+            if (msg) messages.push_back(*msg);
+        }
+
+        if (!messages.empty()) {
+            std::cerr << "RC4 transpoder loaded: " << id << std::endl;
+            RC4Registry::store(id, messages);
+        }
+        loaded_ids.insert(id);
+    }
+
+    for (auto it = loaded_ids.begin(); it != loaded_ids.end(); ) {
+        if (!current_ids.count(*it)) {
+            RC4Registry::remove(*it);
+            std::cerr << "RC4 transpoder removed: " << (*it) << std::endl;
+            it = loaded_ids.erase(it);
+        } else {
+            ++it;
+        }
+    }
 }
 
 void RC4Trainer::append(uint64_t timestamp, float rssi, uint32_t transponder_id, RC4Message message) {
     std::lock_guard<std::mutex> lock(mutex);
 
     buffer.push_back({timestamp, rssi, transponder_id, message});
-    if (buffer.size() > BUFFER_MAX_SIZE)
+    if (buffer.size() > BUFFER_MAX_SIZE) {
         buffer.pop_front();
+    }
 }
 
 RC4Trainer::EvaluationResult RC4Trainer::evaluate(uint64_t timestamp) {

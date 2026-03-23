@@ -33,7 +33,7 @@ static const uint64_t startup_ts = duration_cast<microseconds>(steady_clock::now
 static bool mode_sysclk = false;
 static uint64_t timecode = 0ul;
 
-static RC4Registry rc4_registry;
+static RC4FileBasedRegistry rc4_registry(".");
 static RC4Trainer rc4_trainer;
 
 bool process_frame(Frame* frame) {
@@ -152,6 +152,9 @@ void init_commons() {
     publisher = new zmq::socket_t(*zmq_context, zmq::socket_type::pub);
     publisher->bind(zmq_address);
     std::cout << "Listening on " << zmq_address << std::endl;
+
+    // initial load rc4 transponder database
+    rc4_registry.resync();
 }
 
 uint64_t reporting_timestamp(uint64_t timestamp_us, uint64_t steady_now, uint64_t sysclk_now) {
@@ -229,7 +232,7 @@ void report_detections() {
             if (transponder_id == 0 && detected_transponders.size() == 1) {
                 transponder_id = detected_transponders.front();
             }
-            rc4_registry.store(transponder_id, messages);
+            transponder_id = rc4_registry.store(transponder_id, messages);
             const auto report = std::format("L {} DONE {} {}", status_ts, transponder_id, messages.size());
             std::cout << report << std::endl;
             publisher->send(zmq::buffer(report), zmq::send_flags::none);
@@ -245,4 +248,7 @@ void report_detections() {
         // no action
         break;
     }
+
+    // re-sync rc4 transponder database
+    rc4_registry.resync();
 }
