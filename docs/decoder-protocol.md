@@ -50,10 +50,10 @@ P <decoder_timestamp:uint64> <transponder_type:string> <transponder_id:uint32_t>
 
 Example:
 ```
-P 1618706341 OPN 1615544 3.50 64 89
-P 1618714251 OPN 1615544 3.08 40 94
-P 1658197240 AMB 3616557 3.88 21 92
-P 1658197696 AMB 3616557 4.24 30 89
+P 1618706341 OPN 1615544 3.50 64 89113
+P 1618714251 OPN 1615544 3.08 40 94345
+P 1658197240 AMB 3616557 3.88 21 92423
+P 1658197696 AMB 3616557 4.24 30 89652
 ```
 
 * `decoder_timestamp` is a milliseconds-resolution [steady clock](https://en.cppreference.com/w/cpp/chrono/steady_clock.html) epoch, counting from the startup of the decoder process. As such, it is insensitive to updates to system time (NTP syncs). Treat it as a monotonic counter. When the decoder process restarts, the counter restarts as well.
@@ -61,7 +61,7 @@ P 1658197696 AMB 3616557 4.24 30 89
 * `transponder_id` is a non-negative number. Both OpenStint and AMB/RC3 defines it as "up to 7 digits", but future transponder options might increase it's width. With OpenStint transponders, even single-digit (ie. `0`) transponder ids are possible.
 * `RSSI` is the maximum "**R**elative **S**ignal **S**trenght **I**ndicator. It is expressed in terms of power, in decibel scale. The reference point (0 dB) is the maximum power the radio can receive, and every measured value *should be* negative (high-power, clipped signals can present as positive values though). It is calculated from (an approximation of) RMS value. As such, the value `-3.0` means the full scale is used, larger values indicate clipping (decrease amplifier gains). Reliable reception is possible at 3 dB above noise floor (repored in status messages).
 * `hit_count` tells about the number of successfully decoded tranponder messages during the passing. OpenStint transponders should transmit a message on average every 1.5 ms. RC4-hybrid transponders send at a similar rate, but only every ~4th is an RC3 message (which is the supported message format).
-* `pass_duration` is an estimate of the transponder being spent inside the loop, in miliseconds. It is usable for speed detection: 90 ms inside a 30 cm wide loop means 0.3/0.09=3.33 m/s or 12 km/h. Pass duration estimate is only available when the transponder's coil is parallel to the pickup loop. If detection is not possible, `0` value is reported.
+* `pass_duration` is an estimate of the transponder being spent inside the loop, in *microseconds*. It is usable for speed detection: 90000 us inside a 30 cm wide loop means 0.3/0.09=3.33 m/s or 12 km/h. Pass duration estimate is only available when the transponder's coil is in close proximity to the pickup loop (under-the-track loop). If detection is not possible, `0` value is reported.
 
 
 ### Time Syncronization ("T")
@@ -80,7 +80,9 @@ Time syncronization messages are sent by OpenStint transponders with precise int
 
 You can read further info in the [transponder protocol](transponder-protocol.md) document.
 
-The gist is though, if the laptimer software receive one-one timesync messages from two decoders, it can synchronize decoder_timestamp with a high precision.
+The gist is though, if the laptimer software receive one-one timesync messages from two decoders, it can synchronize decoder_timestamp with a good enough precision.
+
+Important: the time reported by the decoder is based on the time a given radio sample-buffer is started processing. As such, it is subject to a few milisecond jitter, caused by the USB controller and the operating system scheduler.
 
 Possible future extensions:
 
@@ -120,9 +122,9 @@ However, the crystal clock in your host computer has to maintain a *system time*
 
 * jumps in the system time (100+ ms)
 * system time might travel backwards
-* system time might artificially speed up or slow down (slewing) to catch up
+* system time might artificially speed up or slow down (slewing) to avoid jumps
 
-All the factors above pose a problem in non-F1 environments as well. To avoid these, the openstint decoder uses the host CPUs tick counter (insensitive to wall clock problems).
+All the factors above pose a problem in non-F1 environments as well. To avoid these, the openstint decoder uses the host CPUs tick counter (insensitive to wall clock problems) for long-term time tracking.
 
 When it comes to sector timing, we no longer measure an interval on the same clock though, but the difference of two, possibly free-running clocks. In this setup, drift errors do add up. As such, you might have to enable the `-t` flag, so the laptiming software sees a *syncronized time* across the various decoders (and leave the problem of time synchronization to the operating system).
 
