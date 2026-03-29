@@ -235,7 +235,8 @@ std::vector<RC4Message> RC4Trainer::registry_messages() {
     std::vector<RC4Message> messages;
     for (const auto &[msg, count] : counts) {
         if (count > 1) {
-            messages.push_back(msg);    
+            messages.push_back(msg);
+            std::cout << count << "\t" << msg << std::endl;
         }
     }
     return messages;
