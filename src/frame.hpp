@@ -29,7 +29,7 @@
 #endif
 
 struct Frame {
-    TransponderType transponder_type; // what kind of preamble was matched
+    TransponderProtocol transponder_protocol; // what kind of preamble was matched
     uint32_t preamble_size;
     uint32_t payload_size;
 
@@ -58,7 +58,7 @@ struct Frame {
     std::complex<float> correction = {1.0f, 0.0f}; // phase & magnitude correction
     
     Frame();
-    Frame(TransponderType transponder_type, uint64_t timestamp, uint64_t timecode);
+    Frame(TransponderProtocol transponder_protocol, uint64_t timestamp, uint64_t timecode);
 
     const uint8_t* bits();
     float rssi() const;
@@ -72,8 +72,9 @@ class FrameDetector {
     static constexpr int samples_per_symbol = SAMPLES_PER_SYMBOL;
 
     // preamble matching
-    static inline const Preamble<uint16_t> p_openstint { transponder_props(TransponderType::OpenStint).bpsk_preamble };
-    static inline const Preamble<uint16_t> p_legacy { transponder_props(TransponderType::Legacy).bpsk_preamble };
+    static inline const Preamble<uint16_t> p_openstint { transponder_props(TransponderProtocol::OpenStint).bpsk_preamble };
+    static inline const Preamble<uint16_t> p_rc3 { transponder_props(TransponderProtocol::RC3).bpsk_preamble };
+    static inline const Preamble<uint16_t> p_rc4 { transponder_props(TransponderProtocol::RC4).bpsk_preamble };
 
     CircBuff<uint16_t> buffers[samples_per_symbol];
     float threshold;
@@ -90,7 +91,7 @@ class FrameDetector {
 public:
     FrameDetector(float threshold);
 
-    std::optional<TransponderType> process_baseband(const std::complex<int8_t> *samples);
+    std::optional<TransponderProtocol> process_baseband(const std::complex<int8_t> *samples);
     void update_statistics();
     void reset_statistics_counters();
 

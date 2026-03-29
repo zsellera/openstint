@@ -21,8 +21,27 @@ uint64_t timecode_to_usec(uint64_t timecode) {
     return timecode * 1000000ul / SAMPLE_RATE;
 }
 
+TransponderSystem transponder_system(TransponderProtocol ttype) {
+    switch (ttype) {
+        case TransponderProtocol::OpenStint:
+        return TransponderSystem::OpenStint;
+        case TransponderProtocol::RC3:
+        case TransponderProtocol::RC4:
+        return TransponderSystem::AMB;
+    }
+}
+
+std::string transponder_system_name(TransponderSystem tsys) {
+    switch (tsys) {
+        case TransponderSystem::OpenStint:
+        return "OPN";
+        case TransponderSystem::AMB:
+        return "AMB";
+    }
+}
+
 void PassingDetector::append(const Frame* frame, uint32_t transponder_id) {
-    TransponderKey transponder_key = std::make_pair(frame->transponder_type, transponder_id);
+    TransponderKey transponder_key = std::make_pair(transponder_system(frame->transponder_protocol), transponder_id);
     Detection d(frame->timestamp, frame->timecode, frame->rssi());
     
     std::lock_guard<std::mutex> lock(mutex);
@@ -390,4 +409,16 @@ std::vector<TimeSync> PassingDetector::identify_timesyncs(uint64_t margin) {
     timesync_messages.clear();
 
     return timesyncs;
+}
+
+std::vector<uint32_t> PassingDetector::passings_between(TransponderSystem tsys, uint64_t from, uint64_t until) {
+    std::vector<uint32_t> transponders;
+    for (const auto& [transponder_key, detection_vec] : detections) {
+        if (transponder_key.first == tsys &&
+            detection_vec.front().timestamp <= until &&
+            detection_vec.back().timestamp >= from) {
+                transponders.push_back(transponder_key.second);
+        }
+    }
+    return transponders;
 }
