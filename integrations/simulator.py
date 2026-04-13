@@ -18,6 +18,7 @@ import random
 import sys
 import threading
 import time
+from math import floor
 
 import zmq
 
@@ -30,6 +31,7 @@ class Simulator:
         self.lock = threading.Lock()
         self.running = True
         self.start_time = time.monotonic()
+        self.hits = 0
         print(f"[simulator] publishing on port {port}")
 
     def get_timecode(self) -> int:
@@ -47,20 +49,22 @@ class Simulator:
         while self.running:
             timecode = self.get_timecode()
             noise = -40 + random.gauss(0, 2)
-            msg = f"S {timecode} {noise:.2f} 5 0 0"
+            msg = f"S {timecode} {noise:.2f} 5 {self.hits} {floor(self.hits*random.randint(50, 99)/100)}"
+            self.hits = 0
             self.publish(msg)
             time.sleep(5)
 
     def passing_loop(self, transponder_id: int, period: float, jitter: float):
         """Generate passings at intervals following normal distribution."""
         while self.running:
-            interval = max(0.1, random.gauss(period, jitter))
+            interval = period + random.lognormvariate(jitter, 1)
             time.sleep(interval)
 
             timecode = self.get_timecode()
             rssi = random.gauss(-10, 3)
             hit_count = random.randint(20, 80)
-            pass_duration = random.randint(80, 110)
+            pass_duration = random.randint(80000, 110000)
+            self.hits += hit_count
 
             passing_msg = f"P {timecode} OPN {transponder_id} {rssi:.2f} {hit_count} {pass_duration}"
             self.publish(passing_msg)
