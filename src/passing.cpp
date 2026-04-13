@@ -287,10 +287,11 @@ PassingPoint compute_passing_point(const std::deque<Detection>& detections) {
     std::transform(y_uniform.begin(), y_uniform.end(), y_peaking.begin(), std::negate<float>{});
     auto rssi_dips = find_peaks(y_peaking, 3.0f /* prominence in dB */);
     if (rssi_dips.size() == 3) {
-        auto pass_duration = (rssi_dips[2].index - rssi_dips[0].index) * tc_duration / 128ul;
-        auto pass_timecode = tc_start + rssi_dips[0].index*tc_duration/128ul + pass_duration/2;
+        auto pass_duration = static_cast<uint64_t>(rssi_dips[2].index - rssi_dips[0].index) * tc_duration / 128ul;
+        auto pass_center_offset = static_cast<uint64_t>(rssi_dips[0].index) * tc_duration / 128ul + pass_duration/2;
+        auto pass_timestamp = detections.front().timestamp + timecode_to_usec(pass_center_offset);
         return {
-            timecode_to_usec(pass_timecode),
+            pass_timestamp,
             max_rssi,
             timecode_to_usec(pass_duration)
         };
@@ -299,10 +300,11 @@ PassingPoint compute_passing_point(const std::deque<Detection>& detections) {
     auto y_smoothed = filtfilt(smoothing_fir, y_uniform);
     auto rssi_peaks = find_peaks(y_smoothed, 1.0f /* dB */);
     if (rssi_peaks.size() == 2) {
-        auto pass_duration = (rssi_peaks[1].index - rssi_peaks[0].index) * tc_duration / 128ul;
-        auto pass_timecode = tc_start + rssi_peaks[0].index*tc_duration/128ul + pass_duration/2;
+        auto pass_duration = static_cast<uint64_t>(rssi_peaks[1].index - rssi_peaks[0].index) * tc_duration / 128ul;
+        auto pass_center_offset = static_cast<uint64_t>(rssi_peaks[0].index) * tc_duration / 128ul + pass_duration/2;
+        auto pass_timestamp = detections.front().timestamp + timecode_to_usec(pass_center_offset);
         return {
-            timecode_to_usec(pass_timecode),
+            pass_timestamp,
             max_rssi,
             timecode_to_usec(pass_duration)
         };
@@ -314,9 +316,10 @@ PassingPoint compute_passing_point(const std::deque<Detection>& detections) {
     float idx_first = first_crossing(y_smoothed, max_smoothed-6.0f);
     float idx_last = last_crossing(y_smoothed, max_smoothed-6.0f);
     float pass_width = idx_last-idx_first;
-    uint64_t pass_timecode = tc_start + static_cast<uint64_t>((idx_first+pass_width/2.0f)/128.0f*tc_duration);
+    auto pass_center_offset = static_cast<uint64_t>((idx_first + pass_width/2.0f) / 128.0f * tc_duration);
+    auto pass_timestamp = detections.front().timestamp + timecode_to_usec(pass_center_offset);
 
-    return {timecode_to_usec(pass_timecode), max_rssi, 0 };
+    return {pass_timestamp, max_rssi, 0};
 }
 
 Passing create_passing(TransponderKey transponder_key, const std::deque<Detection>& detections) {
