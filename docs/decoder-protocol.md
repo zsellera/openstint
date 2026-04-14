@@ -112,6 +112,38 @@ S 1792042901 -41.0032545 5.08 0 0
 Possible future extensions:
 * Low-bin (ie. 64) FFT on the received signal. It would help setting up preamps and amplifiers gains.
 
+### Learning Mode ("L")
+
+Learning mode messages are emitted by the RC4 trainer, which learns and registers RC4 transponder identities. The trainer monitors incoming RC4 frames and, when it detects a stable signal, enters a training session to collect enough data to reliably identify the transponder.
+
+Structure (varies by event):
+```
+L <decoder_timestamp:uint64> START <rssi:float>
+L <decoder_timestamp:uint64> INTERRUPTED
+L <decoder_timestamp:uint64> DONE <transponder_id:uint32> <payload_count:uint32>
+L <decoder_timestamp:uint64> RESET
+```
+
+Example:
+```
+L 1792039754 START -8.3
+L 1792041851 DONE 1001 12
+L 1792055320 START -6.1
+L 1792055890 INTERRUPTED
+L 1792080100 START -7.5
+L 1792082200 RESET
+```
+
+Events:
+
+* `START` — the trainer detected a stable RC4 signal and entered learning mode. The `rssi` value is the RSSI of the last training entry at the time of entering learning mode.
+* `INTERRUPTED` — the training session was interrupted, either because the signal was lost (no frames for >500 ms) or because the RSSI became unstable (range exceeded 3 dB).
+* `DONE` — the training session completed successfully. The `transponder_id` is the assigned (or matched) transponder ID, and `payload_count` is the number of distinct RC4 payloads registered for this transponder.
+* `RESET` — after a completed session, the trainer waited for the transponder to leave the loop area. If no frames were received for >1 s, the trainer resets to idle, ready for the next transponder.
+
+* `decoder_timestamp` is the same monotonic clock as used in other messages.
+
+
 ## Timebase, sector timing and timing accuracy (-t flag)
 
 **MAIN TAKEAWAY:** use the default setting (monotonic cpu clock), and enable the `-t` flag (use system clock) only after the risks & benefits have been understood and assessed.

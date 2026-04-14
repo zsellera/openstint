@@ -4,7 +4,8 @@
 
 OpenStint is a software defined radio (SDR) based laptiming decoder, using either *HackRF One* or *RTL-SDR v4*. It works both with its own [transponder protocol](docs/transponder-protocol.md) and with AMB/RC3-based transponders. It can run on a Raspberry Pi 3 Model B+. Only a minimal electronics knowledge is required; touching a soldering iron is optional.
 
-* :tada: Supports OpenStint transponder, as well as RC3/RC4Hybrid/MRT and other RC3-clones
+* :tada: Natively supports OpenStint transponder, as well as RC3/RC4Hybrid/MRT and other RC3-clones
+* :mortar_board: 3-wire RC4 support with [learning feature](docs/rc4.md)
 * :wrench: Off-the-shelf components, no electronic skills are required (HackRF One, RTL-SDR v3 & v4).
 * :checkered_flag: Tested with [ZRound](https://www.zround.com/index.php/download-mananger/)
 * :chart_with_downwards_trend: Low resource requirements: runs even on a Rapsberry Pi 3 Model B+
@@ -65,6 +66,7 @@ Usage: openstint_hackrf [-d ser_nr] [-l <0..40>] [-v <0..62>] [-a] [-b] [-p tcp_
 	-p port     default:5556	ZeroMQ publisher port
 	-m          default:off 	Enable monitor mode (print received frames to stdout)
 	-t          default:off 	Use system clock as the timebase (beware of NTP jumps)
+	-s dir      default:.   	RC4 registry storage directory
 ```
 
 ### RTL-SDR
@@ -78,6 +80,7 @@ Usage: openstint_rtlsdr [-d ser_nr] [-g <gain_dB>] [-D] [-b] [-p tcp_port] [-m] 
 	-p port     default:5556	ZeroMQ publisher port
 	-m          default:off 	Enable monitor mode (print received frames to stdout)
 	-t          default:off 	Use system clock as the timebase (beware of NTP jumps)
+	-s dir      default:.   	RC4 registry storage directory
 ```
 
 ## HackRF One or RTL-SDR?

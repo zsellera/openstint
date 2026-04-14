@@ -4,6 +4,7 @@
 #include <complex>
 #include <format>
 #include <iostream>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -14,6 +15,7 @@
 #include "frame.hpp"
 #include "passing.hpp"
 #include "counters.hpp"
+#include "rc4.hpp"
 
 using namespace std::chrono;
 
@@ -32,6 +34,9 @@ static const uint64_t startup_ts = duration_cast<microseconds>(steady_clock::now
 static bool mode_sysclk = false;
 static uint64_t timecode = 0ul;
 
+static std::string storage_dir = ".";
+static std::unique_ptr<RC4FileBasedRegistry> rc4_registry;
+static RC4Trainer rc4_trainer;
 
 bool process_frame(Frame* frame) {
     if (monitor_mode) {
@@ -45,8 +50,8 @@ bool process_frame(Frame* frame) {
     }
 
     uint32_t transponder_id;
-    switch (frame->transponder_type) {
-        case TransponderType::OpenStint:
+    switch (frame->transponder_protocol) {
+        case TransponderProtocol::OpenStint:
         if (decode_openstint(softbits, &transponder_id)) {
             if (transponder_id < 10000000u) {
                 passing_detector.append(frame, transponder_id);
@@ -57,14 +62,35 @@ bool process_frame(Frame* frame) {
             return true;
         }
         break;
-        case TransponderType::Legacy:
-        if (decode_legacy(softbits, &transponder_id)) {
-            if (transponder_id < 10000000) { // extra check (7-digit max)
-                passing_detector.append(frame, transponder_id);
+        case TransponderProtocol::RC3: {
+            uint8_t status_code;
+            if (decode_rc3(softbits, &transponder_id, &status_code)) {
+                // status byte:
+                // https://www.rctech.net/forum/showpost.php?p=16244070&postcount=1171
+                // RC4 hybrid and "recent" RC3 indicate status messages in lower 3 bits (0x07 mask)
+                // Older RC3 indicate normal messages by setting all bits 1 (0xff)
+                if (transponder_id < 10000000 && (status_code == 0xff || (status_code & 0x07)==0)) {
+                    passing_detector.append(frame, transponder_id);
+                }
+                // at this point decoding was success; if status byte indicates
+                // non-transponder message, it should not screw decoded statistics
+                return true;
             }
-            return true;
         }
         break;
+        case TransponderProtocol::RC4: {
+            RC4Message msg(softbits);
+            if (!msg.is_valid) { // fails validation
+                return false;
+            }
+            if (rc4_registry->lookup(msg.payload, &transponder_id)) {
+                passing_detector.append(frame, transponder_id);
+                rc4_trainer.append(frame->timestamp, frame->rssi(), transponder_id, msg.payload);
+                return true;
+            }
+            rc4_trainer.append(frame->timestamp, frame->rssi(), 0, msg.payload);
+            return true;
+        }
     }
     return false;
 }
@@ -75,7 +101,7 @@ void detect_frames(const std::complex<int8_t>* samples, std::size_t sample_count
     bool frame_detected = false;
     for (uint32_t idx=0; (idx+SAMPLES_PER_SYMBOL)<=sample_count; idx+=SAMPLES_PER_SYMBOL) {
         if (frame_parse_mode == FRAME_SEEK) {
-            const std::optional<TransponderType> detected = frame_detector.process_baseband(samples+idx);
+            const std::optional<TransponderProtocol> detected = frame_detector.process_baseband(samples+idx);
             if (detected) {
                 frame_parse_mode = FRAME_FOUND;
                 frame_detected = true; // do not use this buffer for noisefloor calculation
@@ -123,6 +149,8 @@ bool parse_common_arguments(int& i, const int argc, const std::string& arg, char
         monitor_mode = true;
     } else if (arg == "-t") {
         mode_sysclk = true;
+    } else if (arg == "-s" && i + 1 < argc) {
+        storage_dir = argv[++i];
     } else {
         return false;
     }
@@ -140,6 +168,10 @@ void init_commons() {
     publisher = new zmq::socket_t(*zmq_context, zmq::socket_type::pub);
     publisher->bind(zmq_address);
     std::cout << "Listening on " << zmq_address << std::endl;
+
+    // initial load rc4 transponder database
+    rc4_registry = std::make_unique<RC4FileBasedRegistry>(storage_dir);
+    rc4_registry->resync();
 }
 
 uint64_t reporting_timestamp(uint64_t timestamp_us, uint64_t steady_now, uint64_t sysclk_now) {
@@ -153,11 +185,12 @@ uint64_t reporting_timestamp(uint64_t timestamp_us, uint64_t steady_now, uint64_
 void report_detections() {
     const uint64_t now_sysclk = duration_cast<microseconds>(system_clock::now().time_since_epoch()).count();
     const uint64_t now_ts = duration_cast<microseconds>(steady_clock::now().time_since_epoch()).count() - startup_ts;
+    const uint64_t status_ts = reporting_timestamp(now_ts, now_ts, now_sysclk);
 
     // report status once a second
     if (rx_stats.reporting_due(now_ts)) {
         const std::string report = std::format("S {} {}",
-            reporting_timestamp(now_ts, now_ts, now_sysclk),
+            status_ts,
             rx_stats.to_string()
         );
         rx_stats.reset(now_ts);
@@ -170,7 +203,7 @@ void report_detections() {
     for (const auto& time_sync : timesyncs) {
         const std::string report = std::format("T {} {} {} {}",
             reporting_timestamp(time_sync.timestamp, now_ts, now_sysclk),
-            transponder_props(time_sync.transponder_type).prefix, // always openstint
+            transponder_system_name(time_sync.transponder_type), // always openstint
             time_sync.transponder_id,
             time_sync.transponder_timestamp
         );
@@ -183,7 +216,7 @@ void report_detections() {
     for (const auto& passing : passings) {
         const std::string report = std::format("P {} {} {} {:.2f} {} {}",
             reporting_timestamp(passing.timestamp, now_ts, now_sysclk),
-            transponder_props(passing.transponder_type).prefix,
+            transponder_system_name(passing.transponder_type),
             passing.transponder_id,
             passing.rssi,
             passing.hits,
@@ -193,4 +226,46 @@ void report_detections() {
         std::cout << report << std::endl;
         publisher->send(zmq::buffer(report), zmq::send_flags::none);
     }
+
+    auto trainer_result = rc4_trainer.evaluate(now_ts);
+    switch (trainer_result) {
+        case RC4Trainer::EvaluationResult::START: {
+            const auto report = std::format("L {} START {:.1f}", status_ts, rc4_trainer.last_rssi());
+            std::cout << report << std::endl;
+            publisher->send(zmq::buffer(report), zmq::send_flags::none);
+        }
+        break;
+        case RC4Trainer::EvaluationResult::INTERRUPED: {
+            const auto report = std::format("L {} INTERRUPTED", status_ts);
+            std::cout << report << std::endl;
+            publisher->send(zmq::buffer(report), zmq::send_flags::none);
+        }
+        break;
+        case RC4Trainer::EvaluationResult::DONE: {
+            uint32_t transponder_id = rc4_trainer.preferred_transponder_id();
+            auto payloads = rc4_trainer.registry_payloads();
+            auto [tsmin, tsmax] = rc4_trainer.buffer_timerange();
+            auto detected_transponders = passing_detector.passings_between(TransponderSystem::AMB, tsmin, tsmax);
+            if (transponder_id == 0 && detected_transponders.size() == 1) {
+                transponder_id = detected_transponders.front();
+            }
+            transponder_id = rc4_registry->store(transponder_id, payloads);
+            const auto report = std::format("L {} DONE {} {}", status_ts, transponder_id, payloads.size());
+            std::cout << report << std::endl;
+            publisher->send(zmq::buffer(report), zmq::send_flags::none);
+        }
+        break;
+        case RC4Trainer::EvaluationResult::RESET: {
+            const auto report = std::format("L {} RESET", status_ts);
+            std::cout << report << std::endl;
+            publisher->send(zmq::buffer(report), zmq::send_flags::none);
+        }
+        break;
+        case RC4Trainer::EvaluationResult::NO_ACTION:
+        // no action
+        break;
+    }
+
+    // re-sync rc4 transponder database
+    rc4_registry->resync();
 }

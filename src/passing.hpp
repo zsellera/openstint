@@ -5,12 +5,20 @@
 #include <mutex>
 #include <map>
 #include <deque>
+#include <string>
 #include <vector>
 #include <utility>
 
 #include "transponder.hpp"
 #include "frame.hpp"
 
+
+enum class TransponderSystem {
+    OpenStint,  // openstint transponder
+    AMB         // rc3 and rc4 transponders
+};
+
+std::string transponder_system_name(TransponderSystem tsys);
 
 struct Detection {
     uint64_t timestamp;
@@ -29,7 +37,7 @@ struct TimeSyncMsg {
 
 struct Passing {
     uint64_t timestamp;
-    TransponderType transponder_type;
+    TransponderSystem transponder_type;
     uint32_t transponder_id;
     float rssi;
     size_t hits;
@@ -38,12 +46,12 @@ struct Passing {
 
 struct TimeSync {
     uint64_t timestamp;
-    TransponderType transponder_type;
+    TransponderSystem transponder_type;
     uint32_t transponder_id;
     uint32_t transponder_timestamp;
 };
 
-typedef std::pair<TransponderType, uint32_t> TransponderKey;
+typedef std::pair<TransponderSystem, uint32_t> TransponderKey;
 
 class PassingDetector {
     std::map<TransponderKey, std::deque<Detection>> detections;
@@ -55,4 +63,5 @@ public:
     void timesync(const Frame* frame, uint32_t transponder_timestamp);
     std::vector<TimeSync> identify_timesyncs(uint64_t margin);
     std::vector<Passing> identify_passings(uint64_t deadline);
+    std::vector<uint32_t> passings_between(TransponderSystem tsys, uint64_t timestamp_from, uint64_t timestamp_until);
 };
