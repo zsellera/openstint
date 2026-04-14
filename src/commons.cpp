@@ -68,15 +68,19 @@ bool process_frame(Frame* frame) {
             return true;
         }
         break;
-        case TransponderProtocol::RC4:
-        RC4Message msg(softbits);
-        if (rc4_registry.lookup(msg, &transponder_id)) {
-            passing_detector.append(frame, transponder_id);
-            rc4_trainer.append(frame->timestamp, frame->rssi(), transponder_id, softbits);
+        case TransponderProtocol::RC4: {
+            RC4Message msg(softbits);
+            if (!msg.is_valid) { // fails validation
+                return false;
+            }
+            if (rc4_registry.lookup(msg.payload, &transponder_id)) {
+                passing_detector.append(frame, transponder_id);
+                rc4_trainer.append(frame->timestamp, frame->rssi(), transponder_id, msg.payload);
+                return true;
+            }
+            rc4_trainer.append(frame->timestamp, frame->rssi(), 0, msg.payload);
             return true;
         }
-        rc4_trainer.append(frame->timestamp, frame->rssi(), 0, softbits);
-        return false;
     }
     return false;
 }
@@ -226,14 +230,14 @@ void report_detections() {
         break;
         case RC4Trainer::EvaluationResult::DONE: {
             uint32_t transponder_id = rc4_trainer.preferred_transponder_id();
-            auto messages = rc4_trainer.registry_messages();
+            auto payloads = rc4_trainer.registry_payloads();
             auto [tsmin, tsmax] = rc4_trainer.buffer_timerange();
             auto detected_transponders = passing_detector.passings_between(TransponderSystem::AMB, tsmin, tsmax);
             if (transponder_id == 0 && detected_transponders.size() == 1) {
                 transponder_id = detected_transponders.front();
             }
-            transponder_id = rc4_registry.store(transponder_id, messages);
-            const auto report = std::format("L {} DONE {} {}", status_ts, transponder_id, messages.size());
+            transponder_id = rc4_registry.store(transponder_id, payloads);
+            const auto report = std::format("L {} DONE {} {}", status_ts, transponder_id, payloads.size());
             std::cout << report << std::endl;
             publisher->send(zmq::buffer(report), zmq::send_flags::none);
         }

@@ -1,6 +1,7 @@
 #include "rc4.hpp"
 
 #include <algorithm>
+#include <bit>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -8,58 +9,95 @@
 #include <string>
 
 RC4Message::RC4Message(const uint8_t *softbits) {
-    hi = 0;
-    for (int i = 0; i < 48; i++) {
-        if (softbits[i] >= 128)
-            hi |= (uint64_t)1 << (47 - i);
+    // differential-decode: decoded[i] = raw[i] ^ raw[i-1], assuming raw[-1] = 0
+    uint8_t bits[100];
+    int prev = 1; // from preamble
+    for (int i = 0; i < 100; i++) {
+        int raw = softbits[i] > 127 ? 1 : 0;
+        bits[i] = raw ^ prev;
+        prev = raw;
     }
 
-    lo = 0;
-    for (int i = 0; i < 64; i++) {
-        if (softbits[48 + i] >= 128)
-            lo |= (uint64_t)1 << (63 - i);
+    // parity check: 5th bit of each block must be the inverse of the 4th
+    is_valid = true;
+    for (int block = 0; block < 20; block++) {
+        if (bits[block * 5 + 3] == bits[block * 5 + 4]) {
+            is_valid = false;
+            break;
+        }
+    }
+
+    // extract payload bits
+    payload = 0ull;
+    for (int block = 0; block < 16; block++) {
+        for (int bit = 0; bit < 4; bit++) {
+            int bit_idx = block * 5 + bit;
+            int payload_idx = block * 4 + bit;
+            if (bits[bit_idx]) {
+                payload |= (uint64_t)1 << (63 - payload_idx);
+            }
+        }
+    }
+
+    // GF(2) verification codes: v[i] = XOR of selected payload bits, XOR constant
+    if (is_valid) {
+        static const std::vector<uint64_t> check_polys = {
+            // block 17:
+            0xc2cd82058e2c0c88ull,
+            0xe166c102c7160644ull,
+            0xf0b36081638b0322ull,
+            0xf859b040b1c58191ull,
+            // block 18:
+            0xbee15a25d6cecc40ull,
+            0xdf70ad12eb676620ull,
+            0x6fb8568975b3b310ull,
+            0xb7dc2b44bad9d988ull,
+            // block 19:
+            0xdbee15a25d6cecc4ull,
+            0x6df70ad12eb67662ull,
+            0x36fb8568975b3b31ull,
+            0x59b040b1c5819110ull,
+            // block 20:
+            0x2cd82058e2c0c888ull,
+            0x166c102c71606444ull,
+            0x0b36081638b03222ull,
+            0x859b040b1c581911ull
+        };
+        static const uint8_t check_constants[] = {
+            0, 0, 1, 1,
+            0, 0, 0, 1,
+            0, 0, 1, 1,
+            1, 1, 1, 0
+        };
+        static const int parity_pos[] = {
+            80, 81, 82, 83,
+            85, 86, 87, 88,
+            90, 91, 92, 93,
+            95, 96, 97, 98
+        };
+
+        for (int v = 0; v < 16; v++) {
+            auto popcount = std::popcount(payload & check_polys[v]);
+            auto parity = (popcount + check_constants[v]) % 2;
+            if (parity != bits[parity_pos[v]]) {
+                is_valid = false;
+                break;
+            }
+        }
     }
 }
 
-bool RC4Message::operator<(const RC4Message &o) const {
-    return hi < o.hi || (hi == o.hi && lo < o.lo);
-}
-
-std::string RC4Message::toString() const {
-    char buf[29];
-    snprintf(buf, sizeof(buf), "%012llx%016llx",
-             (unsigned long long)(hi & 0xFFFFFFFFFFFFULL),
-             (unsigned long long)lo);
-    return buf;
-}
-
-std::ostream &operator<<(std::ostream &os, const RC4Message &m) {
-    return os << m.toString();
-}
-
-std::optional<RC4Message> RC4Message::fromString(const std::string &s) {
-    if (s.size() != 28) return std::nullopt;
-    try {
-        RC4Message msg;
-        msg.hi = std::stoull(s.substr(0, 12), nullptr, 16);
-        msg.lo = std::stoull(s.substr(12, 16), nullptr, 16);
-        return msg;
-    } catch (...) {
-        return std::nullopt;
-    }
-}
-
-bool RC4Registry::lookup(const RC4Message &message, uint32_t *transponder_id) {
+bool RC4Registry::lookup(const uint64_t &rc4_payload, uint32_t *transponder_id) {
     std::shared_lock<std::shared_mutex> read_lock(mutex);
 
-    auto it = registry.find(message);
+    auto it = registry.find(rc4_payload);
     if (it == registry.end())
         return false;
     *transponder_id = it->second;
     return true;
 }
 
-uint32_t RC4Registry::store(uint32_t transponder_id, std::vector<RC4Message> messages) {
+uint32_t RC4Registry::store(uint32_t transponder_id, std::vector<uint64_t> rc4_payloads) {
     std::unique_lock<std::shared_mutex> write_lock(mutex);
 
     if (transponder_id >= 1000 && transponder_id <= 9999) {
@@ -70,8 +108,8 @@ uint32_t RC4Registry::store(uint32_t transponder_id, std::vector<RC4Message> mes
     if (transponder_id == 0) {
         transponder_id = (next_transponder++);
     }
-    for (const auto &msg : messages) {
-        registry[msg] = transponder_id;
+    for (const auto &p : rc4_payloads) {
+        registry[p] = transponder_id;
     }
 
     return transponder_id;
@@ -96,13 +134,15 @@ void RC4Registry::resync() {
 RC4FileBasedRegistry::RC4FileBasedRegistry(std::string directory)
     : directory(std::move(directory)) {}
 
-uint32_t RC4FileBasedRegistry::store(uint32_t transponder_id, std::vector<RC4Message> messages) {
-    transponder_id = RC4Registry::store(transponder_id, messages);
+uint32_t RC4FileBasedRegistry::store(uint32_t transponder_id, std::vector<uint64_t> rc4_payloads) {
+    transponder_id = RC4Registry::store(transponder_id, rc4_payloads);
     loaded_ids.insert(transponder_id);
 
     std::ofstream file(directory + "/" + std::to_string(transponder_id) + ".rc4", std::ios::app);
-    for (const auto &msg : messages) {
-        file << msg << "\n";
+    for (const auto &p : rc4_payloads) {
+        char buf[17];
+        snprintf(buf, sizeof(buf), "%016llx", (unsigned long long)p);
+        file << buf << "\n";
     }
 
     return transponder_id;
@@ -131,15 +171,17 @@ void RC4FileBasedRegistry::resync() {
 
         std::ifstream file(path);
         std::string line;
-        std::vector<RC4Message> messages;
+        std::vector<uint64_t> payloads;
         while (std::getline(file, line)) {
-            auto msg = RC4Message::fromString(line);
-            if (msg) messages.push_back(*msg);
+            if (line.size() == 16) {
+                try {
+                    payloads.push_back(std::stoull(line, nullptr, 16));
+                } catch (...) {}
+            }
         }
-
-        if (!messages.empty()) {
+        if (!payloads.empty()) {
             std::cerr << "RC4 transpoder loaded: " << id << std::endl;
-            RC4Registry::store(id, messages);
+            RC4Registry::store(id, payloads);
         }
         loaded_ids.insert(id);
     }
@@ -155,10 +197,10 @@ void RC4FileBasedRegistry::resync() {
     }
 }
 
-void RC4Trainer::append(uint64_t timestamp, float rssi, uint32_t transponder_id, RC4Message message) {
+void RC4Trainer::append(uint64_t timestamp, float rssi, uint32_t transponder_id, uint64_t rc4_payload) {
     std::lock_guard<std::mutex> lock(mutex);
 
-    buffer.push_back({timestamp, rssi, transponder_id, message});
+    buffer.push_back({timestamp, rc4_payload, rssi, transponder_id});
     if (buffer.size() > BUFFER_MAX_SIZE) {
         buffer.pop_front();
     }
@@ -223,30 +265,25 @@ RC4Trainer::EvaluationResult RC4Trainer::evaluate(uint64_t timestamp) {
     return EvaluationResult::NO_ACTION;
 }
 
-std::vector<RC4Message> RC4Trainer::registry_messages() {
+std::vector<uint64_t> RC4Trainer::registry_payloads() {
     std::lock_guard<std::mutex> lock(mutex);
 
-    // find repeating messages by counting them:
-    std::map<RC4Message, int> counts;
+    std::map<uint64_t, int> counts;
     for (const auto &e : buffer) {
-        counts[e.message]++;
+        counts[e.rc4_payload]++;
     }
-    // collect repeating messages:
-    std::vector<RC4Message> messages;
-    for (const auto &[msg, count] : counts) {
+    std::vector<uint64_t> payloads;
+    for (const auto &[p, count] : counts) {
         if (count > 1) {
-            messages.push_back(msg);
-            std::cout << count << "\t" << msg << std::endl;
+            payloads.push_back(p);
         }
     }
-    return messages;
+    return payloads;
 }
 
 uint32_t RC4Trainer::preferred_transponder_id() {
     std::lock_guard<std::mutex> lock(mutex);
 
-    // if any of the messages were from a previous training, find
-    // the preferred transponder id:
     auto known = std::find_if(
         buffer.begin(), buffer.end(),
         [](const Entry &e) { return e.transponder_id != 0; }
