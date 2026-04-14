@@ -1,6 +1,6 @@
 # Starting the decoder on Windows
 
-This project builds Windows binaries semi-regularly, and are available under the [latest-windows release page](https://github.com/zsellera/openstint/releases/tag/latest-windows). The provided `.zip` file contains the `openstint.exe` binary with all required dll-s and integrations.
+This project builds Windows binaries semi-regularly, and are available under the [latest-windows release page](https://github.com/zsellera/openstint/releases/tag/nightly-master). The provided `.zip` file contains the `openstint.exe` binary with all required dll-s and integrations.
 
 1. download and extract the release
 2. open a command line (press windows icon once, and type `cmd`), and `cd` into the extracted folder
