@@ -4,6 +4,7 @@
 #include <complex>
 #include <format>
 #include <iostream>
+#include <memory>
 #include <string>
 #include <vector>
 
@@ -33,7 +34,8 @@ static const uint64_t startup_ts = duration_cast<microseconds>(steady_clock::now
 static bool mode_sysclk = false;
 static uint64_t timecode = 0ul;
 
-static RC4FileBasedRegistry rc4_registry(".");
+static std::string storage_dir = ".";
+static std::unique_ptr<RC4FileBasedRegistry> rc4_registry;
 static RC4Trainer rc4_trainer;
 
 bool process_frame(Frame* frame) {
@@ -81,7 +83,7 @@ bool process_frame(Frame* frame) {
             if (!msg.is_valid) { // fails validation
                 return false;
             }
-            if (rc4_registry.lookup(msg.payload, &transponder_id)) {
+            if (rc4_registry->lookup(msg.payload, &transponder_id)) {
                 passing_detector.append(frame, transponder_id);
                 rc4_trainer.append(frame->timestamp, frame->rssi(), transponder_id, msg.payload);
                 return true;
@@ -147,6 +149,8 @@ bool parse_common_arguments(int& i, const int argc, const std::string& arg, char
         monitor_mode = true;
     } else if (arg == "-t") {
         mode_sysclk = true;
+    } else if (arg == "-s" && i + 1 < argc) {
+        storage_dir = argv[++i];
     } else {
         return false;
     }
@@ -166,7 +170,8 @@ void init_commons() {
     std::cout << "Listening on " << zmq_address << std::endl;
 
     // initial load rc4 transponder database
-    rc4_registry.resync();
+    rc4_registry = std::make_unique<RC4FileBasedRegistry>(storage_dir);
+    rc4_registry->resync();
 }
 
 uint64_t reporting_timestamp(uint64_t timestamp_us, uint64_t steady_now, uint64_t sysclk_now) {
@@ -225,7 +230,7 @@ void report_detections() {
     auto trainer_result = rc4_trainer.evaluate(now_ts);
     switch (trainer_result) {
         case RC4Trainer::EvaluationResult::START: {
-            const auto report = std::format("L {} START", status_ts);
+            const auto report = std::format("L {} START {:.1f}", status_ts, rc4_trainer.last_rssi());
             std::cout << report << std::endl;
             publisher->send(zmq::buffer(report), zmq::send_flags::none);
         }
@@ -244,7 +249,7 @@ void report_detections() {
             if (transponder_id == 0 && detected_transponders.size() == 1) {
                 transponder_id = detected_transponders.front();
             }
-            transponder_id = rc4_registry.store(transponder_id, payloads);
+            transponder_id = rc4_registry->store(transponder_id, payloads);
             const auto report = std::format("L {} DONE {} {}", status_ts, transponder_id, payloads.size());
             std::cout << report << std::endl;
             publisher->send(zmq::buffer(report), zmq::send_flags::none);
@@ -262,5 +267,5 @@ void report_detections() {
     }
 
     // re-sync rc4 transponder database
-    rc4_registry.resync();
+    rc4_registry->resync();
 }

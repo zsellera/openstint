@@ -68,4 +68,5 @@ public:
     std::vector<uint64_t> registry_payloads();
     uint32_t preferred_transponder_id();
     std::pair<uint64_t, uint64_t> buffer_timerange();
+    float last_rssi();
 };

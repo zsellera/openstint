@@ -8,6 +8,8 @@
 #include <set>
 #include <string>
 
+#define RC4_TRAINING_RSSI_LIMIT -20.0f
+
 RC4Message::RC4Message(const uint8_t *softbits) {
     // differential-decode: decoded[i] = raw[i] ^ raw[i-1], assuming raw[-1] = 0
     uint8_t bits[100];
@@ -167,6 +169,7 @@ void RC4FileBasedRegistry::resync() {
         try { id = std::stoul(stem); } catch (...) { continue; }
 
         current_ids.insert(id);
+        // do not re-load already loaded (even if content has changed!)
         if (loaded_ids.count(id)) { continue; }
 
         std::ifstream file(path);
@@ -213,7 +216,7 @@ RC4Trainer::EvaluationResult RC4Trainer::evaluate(uint64_t timestamp) {
         case state_t::IDLE: {
             if (buffer.size() < 128) break;
             const Entry &last = buffer.back();
-            if ((int64_t)(timestamp - last.timestamp) > 100000 || last.rssi <= -15.0f) break;
+            if ((int64_t)(timestamp - last.timestamp) > 100000 || last.rssi <= RC4_TRAINING_RSSI_LIMIT) break;
             auto tail = std::prev(buffer.end(), 128);
             auto [mn, mx] = std::minmax_element(
                 tail,
@@ -294,4 +297,9 @@ uint32_t RC4Trainer::preferred_transponder_id() {
 std::pair<uint64_t, uint64_t> RC4Trainer::buffer_timerange() {
     std::lock_guard<std::mutex> lock(mutex);
     return std::make_pair(buffer.front().timestamp, buffer.back().timestamp);
+}
+
+float RC4Trainer::last_rssi() {
+    std::lock_guard<std::mutex> lock(mutex);
+    return buffer.back().rssi;
 }

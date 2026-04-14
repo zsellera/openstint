@@ -58,13 +58,14 @@ int main(int argc, char** argv) {
             if (arg != "-h") {
                 std::cerr << "Unknown argument: " << arg << "\n";
             }
-            std::cerr << "Usage: " << argv[0] << " [-d ser_nr] [-g <gain_dB>] [-D] [-b] [-p tcp_port] [-m] [-t]\n";
+            std::cerr << "Usage: " << argv[0] << " [-d ser_nr] [-g <gain_dB>] [-D] [-b] [-p tcp_port] [-s dir] [-m] [-t]\n";
             std::cerr << "\t-d ser_nr   default:first\tserial number of the desired RTL-SDR\n";
             std::cerr << "\t-g <0..40>  default:" << DEFAULT_GAIN_TENTHS_DB / 10 << "  \ttuner gain in dB\n";
             std::cerr << "\t-b          default:off \tEnable bias-tee (+4.5 V)\n";
             std::cerr << "\t-p port     default:" << DEFAULT_ZEROMQ_PORT << "\tZeroMQ publisher port\n";
             std::cerr << "\t-m          default:off \tEnable monitor mode (print received frames to stdout)\n";
             std::cerr << "\t-t          default:off \tUse system clock as the timebase (beware of NTP jumps)\n";
+            std::cerr << "\t-s dir      default:.   \tRC4 registry storage directory\n";
 
             return 1;
         }
