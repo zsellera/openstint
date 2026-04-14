@@ -10,7 +10,7 @@ It is resolved with a **learning** approach: place the car on the antenna loop, 
 
 2. **Wait for `START`.** The decoder monitors incoming RC4 frames. When it detects a stable signal (consistent RSSI, signal stronger than -20 dBFS), it enters learning mode:
    ```
-   L 9042 START
+   L 9042 START -16.2
    ```
 
 3. **Keep the car stationary.** This is the critical part: do not move or reposition the transponder during training. If the car is moved or the signal becomes unstable, the decoder aborts:
@@ -46,16 +46,3 @@ The database is **hot-reloaded**: the decoder periodically scans the storage dir
 This hot-reload also means you can prepare `.rc4` files externally (e.g. copy from another decoder or a shared database) and drop them into the storage directory at any time.
 
 Note: modifying the *contents* of an already-loaded file requires a decoder restart, as files are not re-read once loaded.
-
-## ZeroMQ protocol messages
-
-The learning progress is reported both to stdout and over the ZeroMQ publisher socket. All messages are prefixed with `L`:
-
-| Message | Meaning |
-|---------|---------|
-| `L <ts> START` | Stable RC4 signal detected, learning started |
-| `L <ts> INTERRUPTED` | Signal lost or became unstable during learning |
-| `L <ts> DONE <id> <count>` | Learning complete; `<id>` is the assigned transponder ID, `<count>` is the number of distinct payloads learned |
-| `L <ts> RESET` | Post-learning cooldown finished, trainer returned to idle |
-
-Timestamps follow the same convention as other OpenStint messages (milliseconds, either steady-clock relative or system-clock based depending on the `-t` flag).

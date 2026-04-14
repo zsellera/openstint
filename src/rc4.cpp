@@ -180,6 +180,28 @@ void RC4FileBasedRegistry::resync() {
                 try {
                     payloads.push_back(std::stoull(line, nullptr, 16));
                 } catch (...) {}
+            } else if (line.size() == 29) {
+                // older pilot format: 28 hex chars = 112 bits
+                // drop first 5 bits, next 100 bits become softbits
+                try {
+                    // parse 28 hex chars into 14 bytes
+                    uint8_t bytes[14];
+                    for (int i = 0; i < 14; i++) {
+                        bytes[i] = (uint8_t)std::stoul(line.substr(i * 2, 2), nullptr, 16);
+                    }
+                    // extract 100 softbits starting at bit offset 5
+                    uint8_t softbits[100];
+                    for (int i = 0; i < 100; i++) {
+                        int bit_pos = 5 + i;
+                        int byte_idx = bit_pos / 8;
+                        int bit_idx = 7 - (bit_pos % 8);
+                        softbits[i] = (bytes[byte_idx] >> bit_idx) & 1 ? 0xFF : 0x00;
+                    }
+                    RC4Message msg(softbits);
+                    if (msg.is_valid) {
+                        payloads.push_back(msg.payload);
+                    }
+                } catch (...) {}
             }
         }
         if (!payloads.empty()) {
