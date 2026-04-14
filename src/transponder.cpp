@@ -26,7 +26,7 @@ int decode_openstint(const uint8_t *softbits, uint32_t *transponder_id) {
     return crc_validate_message(crc8_scheme, decoded, 3, decoded[3]);
 }
 
-int decode_rc3(const uint8_t *softbits, uint32_t *transponder_id) {
+int decode_rc3(const uint8_t *softbits, uint32_t *transponder_id, uint8_t *status_code) {
     // RC3 use a K=24, r=1/2 convolutional encoder with polynoms 0xEEC20F and 0xEEC20D
     // Decoding this properly with error correction must have some unknown trick. However,
     // we can do non-trivial decoding as well.
@@ -99,11 +99,8 @@ int decode_rc3(const uint8_t *softbits, uint32_t *transponder_id) {
         }
     }
     *transponder_id = tid;
+    *status_code = status;
 
     // the last byte must be zero (tail==0 error check)
-    // status byte:
-    // https://www.rctech.net/forum/showpost.php?p=16244070&postcount=1171
-    // RC4 hybrid and "recent" RC3 indicate status messages in lower 3 bits (0x07 mask)
-    // Older RC3 indicate normal messages by setting all bits 1 (0xff)
-    return (trail == 0) && ((status == 0xff) || (status & 0x07)==0);
+    return (trail == 0);
 }

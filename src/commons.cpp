@@ -60,12 +60,20 @@ bool process_frame(Frame* frame) {
             return true;
         }
         break;
-        case TransponderProtocol::RC3:
-        if (decode_rc3(softbits, &transponder_id)) {
-            if (transponder_id < 10000000) { // extra check (7-digit max)
-                passing_detector.append(frame, transponder_id);
+        case TransponderProtocol::RC3: {
+            uint8_t status_code;
+            if (decode_rc3(softbits, &transponder_id, &status_code)) {
+                // status byte:
+                // https://www.rctech.net/forum/showpost.php?p=16244070&postcount=1171
+                // RC4 hybrid and "recent" RC3 indicate status messages in lower 3 bits (0x07 mask)
+                // Older RC3 indicate normal messages by setting all bits 1 (0xff)
+                if (transponder_id < 10000000 && (status_code == 0xff || (status_code & 0x07)==0)) {
+                    passing_detector.append(frame, transponder_id);
+                }
+                // at this point decoding was success; if status byte indicates
+                // non-transponder message, it should not screw decoded statistics
+                return true;
             }
-            return true;
         }
         break;
         case TransponderProtocol::RC4: {
