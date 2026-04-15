@@ -7,7 +7,7 @@ OpenStint is a software defined radio (SDR) based laptiming decoder, using eithe
 * :tada: Natively supports OpenStint transponder, as well as RC3/RC4Hybrid/MRT and other RC3-clones
 * :mortar_board: 3-wire RC4 support with [learning feature](docs/rc4.md)
 * :wrench: Off-the-shelf components, no electronic skills are required (HackRF One, RTL-SDR v3 & v4).
-* :checkered_flag: Tested with [ZRound](https://www.zround.com/index.php/download-mananger/)
+* :checkered_flag: Tested with [LapBeeps](https://lapbeeps.com), [RCGTiming](https://rcgtiming.com/) and [ZRound](https://www.zround.com/index.php/download-mananger/)
 * :chart_with_downwards_trend: Low resource requirements: runs even on a Rapsberry Pi 3 Model B+
 * :stopwatch: Precise passing time detection (based on signal strength)
 * :car: Passing speed detection (based on signal strength)

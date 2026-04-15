@@ -76,6 +76,7 @@ jobs:
       run: |
         pip install pyzmq tornado pyinstaller
         pyinstaller --onefile --name bridge-zround --hidden-import=zmq --hidden-import=tornado integrations/bridge-zround.py
+        pyinstaller --onefile --name bridge-rcgtiming --hidden-import=zmq --hidden-import=tornado integrations/bridge-rcgtiming.py
 
     - name: Package binaries
       shell: msys2 {0}
@@ -86,6 +87,7 @@ jobs:
         # Copy required DLLs (union of both binaries)
         ldd build/src/openstint_hackrf.exe build/src/openstint_rtlsdr.exe | grep mingw64 | awk '{print $3}' | sort -u | xargs -I{} cp {} openstint-windows-x64/ || true
         cp dist/bridge-zround.exe openstint-windows-x64/
+        cp dist/bridge-rcgtiming.exe openstint-windows-x64/
         cp README.md openstint-windows-x64/
         cp -r integrations openstint-windows-x64/
 
