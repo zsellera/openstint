@@ -176,11 +176,12 @@ void RC4FileBasedRegistry::resync() {
         std::string line;
         std::vector<uint64_t> payloads;
         while (std::getline(file, line)) {
+            if (!line.empty() && line.back() == '\r') line.pop_back();
             if (line.size() == 16) {
                 try {
                     payloads.push_back(std::stoull(line, nullptr, 16));
                 } catch (...) {}
-            } else if (line.size() == 29) {
+            } else if (line.size() == 28) {
                 // older pilot format: 28 hex chars = 112 bits
                 // drop first 5 bits, next 100 bits become softbits
                 try {
