@@ -12,24 +12,6 @@ Alternatively, double-click to the exe, and start with defaults;
 
 ## Pre-build integrations
 
-### bridge-p3.exe
-
-Translates OpenStint decoder messages to MyLaps P3 system. Use with LiveTime Scoring and ZRound.
-
-```
-bridge-p3.exe --help
-usage: bridge-p3.exe [-h] [--host HOST] [--port PORT] [--listen LISTEN] [--id ID]
-
-Read OpenStint decoder and stream results as an AMB/P3 decoder
-
-options:
-  -h, --help       show this help message and exit
-  --host HOST      OpenStint host
-  --port PORT      OpenStint port
-  --listen LISTEN  P3 protocol listen port
-  --id ID          Decoder ID (max 4 ascii characters)
-```
-
 ### bridge-zround.exe
 
 ```
@@ -44,6 +26,10 @@ options:
   --port PORT      OpenStint port
   --listen LISTEN  ZRound protocol listen port
 ```
+
+### bridge-rcgtiming.exe
+
+RCGTiming is an online application. The "bridge-rcgtiming" streams the decoder's output to their backend. On their web interface, register a decoder, and click "Driver App" download. Download only the "Configuration update"; the details on the download screen won't matter later. There is a human-readable "main.conf" in the zip file, and an authentication token inside. The bridge-rcgtiming is asking for it (enter without the quotation marks).
 
 ## Starting other integrations
 

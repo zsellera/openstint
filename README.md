@@ -15,9 +15,11 @@ OpenStint is a software defined radio (SDR) based laptiming decoder, using eithe
 
 **Download:** [Windows users](docs/setup-tutorial-windows.md) can download precompiled binaries; the rest of us have to compile from source.
 
-Side-projects: [openstint transponder](https://github.com/zsellera/openstint-transponder) | [antenna preamplifier](https://github.com/zsellera/openstint-preamp)
+**Tutorials:** [cheapest setup with rtl-sdr](docs/setup-simple-rtlsdr.md) | [track setup tutorial](docs/setup-tutorial.md) | [standalone decoder on a raspberry pi](docs/setup-tutorial-raspberry.md)
 
-Check out the [track setup tutorial](docs/setup-tutorial.md) to get started. To learn more how SDR works, watch [Andreas Spiess](https://www.youtube.com/watch?v=xQVm-YTKR9s) explaining it.
+**Side-projects:** [openstint transponder](https://github.com/zsellera/openstint-transponder) | [antenna preamplifier](https://github.com/zsellera/openstint-preamp)
+
+To learn more how SDR works, watch [Andreas Spiess](https://www.youtube.com/watch?v=xQVm-YTKR9s) explaining it.
 
 ## Compile from source
 You have compile it from source. Install its dependencies first:

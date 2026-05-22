@@ -57,7 +57,7 @@ class Simulator:
     def passing_loop(self, transponder_id: int, period: float, jitter: float):
         """Generate passings at intervals following normal distribution."""
         while self.running:
-            interval = period + random.lognormvariate(jitter, 1)
+            interval = period + random.lognormvariate(jitter, jitter/10.0)
             time.sleep(interval)
 
             timecode = self.get_timecode()

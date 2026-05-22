@@ -89,6 +89,8 @@ jobs:
         cp dist/bridge-zround.exe openstint-windows-x64/
         cp dist/bridge-rcgtiming.exe openstint-windows-x64/
         cp README.md openstint-windows-x64/
+        cp LICENSE openstint-windows-x64/
+        cp tools/start.bat openstint-windows-x64/
         cp -r integrations openstint-windows-x64/
 
     - name: Create ZIP for release
