@@ -12,7 +12,7 @@ This is the most simple setup imaginable. You need your laptop, and the followin
 | [10m 20AWG silicone-insulated wire](https://www.aliexpress.com/item/32905273182.html) | $5 |
 | [1m USB extension cable](https://www.aliexpress.com/item/1005004371131664.html) | $2 |
 | [390 Ohm resistor](https://www.aliexpress.com/item/1005006730561561.html) | $1 |
-| **TOTAL** | $65 |
+| **TOTAL** | **$65** |
 
 Your prices might vary (shipping and taxes).
 
@@ -53,7 +53,7 @@ Using OpenStint is this easy:
 1. Download the Windows distibution from the [releases](https://github.com/zsellera/openstint/releases/tag/nightly-master).
 2. You can double-click on `openstint_rtlsdr.exe` to start with default parameters, or right-click -> edit `start.bat` to fine-tune parameters.
 
-### Lap counting and scorign
+### Lap counting and scoring
 
 I develop [LapBeeps](https://lapbeeps.com), it support OpenStint natively.
 
