@@ -12,20 +12,55 @@
 #include <vector>
 
 #include "commons.hpp"
+#include "capture.hpp"
 
 #include <rtl-sdr.h>
 
 
 static rtlsdr_dev_t* device = nullptr;
 static std::atomic<bool> do_exit(false);
+static std::atomic<bool> streaming(false);
 
 static const uint64_t CENTER_FREQ_HZ       = 5000000ULL;
 static const int DEFAULT_GAIN_TENTHS_DB    = 200;           // dB
+
+// number of raw bytes (2 per IQ sample) read per chunk, matching the RTL-SDR read buffer
+static const size_t CHUNK_BYTES = 32768;
+
+// Conversion buffer: RTL-SDR provides uint8_t, commons.cpp expects int8_t
+static std::vector<std::complex<int8_t>> conversion_buffer(CHUNK_BYTES / 2);
 
 // signal handler to break the capture loop
 void signal_handler(int signum) {
     std::cerr << "\nCaught signal " << signum << " — stopping...\n";
     do_exit = true;
+    if (device) {
+        rtlsdr_cancel_async(device);
+    }
+}
+
+// rtlsdr callback invoked for each block of data
+void rx_callback(unsigned char* buf, uint32_t len, void* /*ctx*/) {
+    if (do_exit) {
+        return;
+    }
+
+    uint32_t sample_count = len / 2;
+
+    if (conversion_buffer.size() < sample_count) {
+        conversion_buffer.resize(sample_count);
+    }
+
+    // RTL-SDR provides unsigned uint8_t samples (0-255, DC at 128).
+    // Convert to signed int8_t (-128 to 127, DC at 0) for commons.cpp.
+    for (uint32_t i = 0; i < sample_count; ++i) {
+        conversion_buffer[i] = std::complex<int8_t>(
+            static_cast<int8_t>(buf[2 * i]     - 128),
+            static_cast<int8_t>(buf[2 * i + 1] - 128)
+        );
+    }
+
+    detect_frames(conversion_buffer.data(), sample_count);
 }
 
 int main(int argc, char** argv) {
@@ -36,11 +71,7 @@ int main(int argc, char** argv) {
     int gain_tenths_db = DEFAULT_GAIN_TENTHS_DB;
     bool bias_tee = false;
     const char* serial = nullptr;
-
-    // read buffers:
-    std::vector<std::complex<int8_t>> conversion_buffer(16384);
-    std::vector<uint8_t> read_buf(32768);
-    int n_read = 0;
+    std::vector<std::string> capture_files;
 
     // process command line arguments
     for (int i = 1; i < argc; ++i) {
@@ -52,16 +83,19 @@ int main(int argc, char** argv) {
             gain_tenths_db = std::atoi(argv[++i]) * 10;
         } else if (arg == "-b") {
             bias_tee = true;
+        } else if (arg == "-c" && i + 1 < argc) {
+            capture_files.push_back(argv[++i]);
         } else if (parse_common_arguments(i, argc, arg, argv)) {
             // do nothing
         } else {
             if (arg != "-h") {
                 std::cerr << "Unknown argument: " << arg << "\n";
             }
-            std::cerr << "Usage: " << argv[0] << " [-d ser_nr] [-g <gain_dB>] [-D] [-b] [-p tcp_port] [-s dir] [-m] [-t]\n";
+            std::cerr << "Usage: " << argv[0] << " [-d ser_nr] [-g <gain_dB>] [-D] [-b] [-c file.iq] [-p tcp_port] [-s dir] [-m] [-t]\n";
             std::cerr << "\t-d ser_nr   default:first\tserial number of the desired RTL-SDR\n";
             std::cerr << "\t-g <0..40>  default:" << DEFAULT_GAIN_TENTHS_DB / 10 << "  \ttuner gain in dB\n";
             std::cerr << "\t-b          default:off \tEnable bias-tee (+4.5 V)\n";
+            std::cerr << "\t-c file.iq  default:off \tReplay CU8 IQ capture (rtl_sdr) instead of using the radio\n";
             std::cerr << "\t-p port     default:" << DEFAULT_ZEROMQ_PORT << "\tZeroMQ publisher port\n";
             std::cerr << "\t-m          default:off \tEnable monitor mode (print received frames to stdout)\n";
             std::cerr << "\t-t          default:off \tUse system clock as the timebase (beware of NTP jumps)\n";
@@ -73,12 +107,22 @@ int main(int argc, char** argv) {
 
     init_commons();
 
-    std::cout << "RTL-SDR RX: freq=" << freq_hz << " Hz, sample_rate=" << sample_rate
-              << " Hz, gain=" << gain_tenths_db / 10 << " dB\n";
-
     // install signal handlers
     std::signal(SIGINT, signal_handler);
     std::signal(SIGTERM, signal_handler);
+
+    // capture replay mode: skip radio init entirely and stream the file(s)
+    // through the same rx_callback used for live samples.
+    if (!capture_files.empty()) {
+        std::cout << "RTL-SDR FILE RX: replaying " << capture_files.size()
+                  << " capture file(s), sample_rate=" << sample_rate << " Hz\n";
+        replay_capture(capture_files, sample_rate, rx_callback, nullptr, do_exit);
+        std::cerr << "Done.\n";
+        return 0;
+    }
+
+    std::cout << "RTL-SDR RX: freq=" << freq_hz << " Hz, sample_rate=" << sample_rate
+              << " Hz, gain=" << gain_tenths_db / 10 << " dB\n";
 
     // find device
     int device_count = rtlsdr_get_device_count();
@@ -185,33 +229,31 @@ int main(int argc, char** argv) {
     // reset buffer to clear stale data
     rtlsdr_reset_buffer(device);
 
-    // main loop — exit when handler sets do_exit
-    while (!do_exit) {
-        int r = rtlsdr_read_sync(device, read_buf.data(), read_buf.size(), &n_read);
-        if (r != 0) {
-            std::fprintf(stderr, "rtlsdr_read_sync() failed: %d\n", r);
-            break;
-        }
-        if (n_read == 0) {
-            continue;
+    // start async reading in a background thread
+    {
+        streaming = true;
+        std::thread rx_thread([]() {
+            int r = rtlsdr_read_async(device, rx_callback, nullptr, 12, 32768);
+            if (r != 0) {
+                std::fprintf(stderr, "rtlsdr_read_async() failed: %d\n", r);
+            }
+            streaming = false;
+        });
+        std::cerr << "Streaming... stop with Ctrl-C\n";
+
+        // main loop — exit when handler sets do_exit or device stops streaming
+        while (!do_exit && streaming) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+            report_detections();
         }
 
-        unsigned int sample_count = n_read / 2;
-        if (conversion_buffer.size() < sample_count) {
-            conversion_buffer.resize(sample_count);
-        }
-        // RTL-SDR provides unsigned uint8_t samples (0-255, DC at 128).
-        // Convert to signed int8_t (-128 to 127, DC at 0) for commons.cpp.
-        for (uint32_t i = 0; i < sample_count; ++i) {
-            conversion_buffer[i] = std::complex<int8_t>(
-                static_cast<int8_t>(read_buf[2 * i]     - 128),
-                static_cast<int8_t>(read_buf[2 * i + 1] - 128)
-            );
-        }
+        // ensure async reading is cancelled
+        rtlsdr_cancel_async(device);
 
-        // call into commons.cpp:
-        detect_frames(conversion_buffer.data(), sample_count);
-        report_detections();
+        if (rx_thread.joinable()) {
+            rx_thread.join();
+        }
     }
 
 cleanup:

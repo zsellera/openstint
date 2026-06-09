@@ -22,6 +22,7 @@ set(OPENSTINT_BASE_SOURCES
     passing.cpp
     counters.cpp
     commons.cpp
+    capture.cpp
     rc4.cpp
 )
 

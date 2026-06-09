@@ -32,9 +32,9 @@ public:
         }
     }
 
-    int16_t dot(const int8_t* buffer, int phase) const {
+    int32_t dot(const int16_t* buffer, int phase) const {
         // -O2 compiles to something SIMD, like SMULL and SMLAL
-        int16_t acc = 0;
+        int32_t acc = 0;
         for (int i = 0; i < bit_count; ++i) {
             acc += buffer[i] * pattern[phase][i];
         }
@@ -51,42 +51,38 @@ struct CircBuff {
 
     // current "tail" of the circular buffer
     int phase = 0;
-    // store baseband signals:
-    int8_t buff_i[bit_count] = {0};
-    int8_t buff_q[bit_count] = {0};
-    // also store baseband energy for t-statisctics
+    // store differentially-demodulated baseband signals
+    int16_t buff[bit_count] = {0};
+    // store energy of each sample
     uint32_t buff_e[bit_count] = {0};
-    uint32_t window_energy = 0; // sum of all buff_e, buffered here
+    // running sum of sample energy
+    uint32_t window_energy = 0;
 
 public:
-    void push(std::complex<int8_t> symbol, uint32_t symbol_energy) {
-        // update window energy
-        window_energy += symbol_energy - buff_e[phase];
-        buff_e[phase] = symbol_energy;
-        // update circular buffer
-        buff_i[phase] = symbol.real();
-        buff_q[phase] = symbol.imag();
+    void push(int16_t v) {
+        uint32_t e = static_cast<int32_t>(v) * v;
+        window_energy += e - buff_e[phase];
+        buff[phase] = v;
+        buff_e[phase] = e;
+
         // inc phase
         phase = (phase + 1) % bit_count;
     }
-    
+
     float match_preamble(const Preamble<T> &sync_word) {
         // guard against divide-by-zero:
         if (window_energy == 0) {
             return 0.0f;
         }
 
-        // run matched filter on both baseband components:
-        int32_t dotprod_i = sync_word.dot(buff_i, phase);
-        int32_t dotprod_q = sync_word.dot(buff_q, phase);
-        
-        // correlation result squared:
-        int32_t c2 = dotprod_i * dotprod_i + dotprod_q * dotprod_q;
+        // matched filter (real channel only):
+        int32_t dotprod = sync_word.dot(buff, phase);
 
-        // create a statistics that can predict how well
-        // the pattern fits to the sample.
-        return static_cast<float>(c2) / (window_energy * 16);
+        // normalized correlation power. dividing the squared correlation by
+        // (signal energy * N) keeps this in [0,1] and =1 only when the buffer
+        // matches the preamble's shape across all taps. a spike has the same
+        // dotprod but N-times the energy, so it scores ~1/N and is rejected.
+        int64_t c2 = static_cast<int64_t>(dotprod) * dotprod;
+        return static_cast<float>(c2) / (window_energy * bit_count);
     }
-
-    uint32_t energy() const { return window_energy; }
 };

@@ -65,10 +65,10 @@ const uint8_t* Frame::bits() {
 
     // start-of-frame 32 bits contain the preamble
     uint32_t sof = concat_bits32(softbits.data());
-    int pos = preamble_pos(sof, transponder_props(transponder_protocol).bpsk_preamble);
+    int pos = preamble_pos(sof, transponder_props(transponder_protocol).preamble);
     if (pos < 0) {
         // try with bits inverted:
-        pos = preamble_pos(~sof, transponder_props(transponder_protocol).bpsk_preamble);
+        pos = preamble_pos(~sof, transponder_props(transponder_protocol).preamble);
         if (pos < 0) { // preamble not found
             return nullptr;
         } else { // preamble found, but BPSK does not know the correct phase
@@ -130,34 +130,45 @@ std::ostream& operator <<(std::ostream& os, const Frame& f) {
 FrameDetector::FrameDetector(float _threshold) : threshold(_threshold) {};
 
 std::optional<TransponderProtocol> FrameDetector::process_baseband(const std::complex<int8_t> *samples) {
-    // remove dc-offset + calculate magninude^2 of each sample
-    std::complex<int8_t> sb[samples_per_symbol];
-    uint16_t mag2s[samples_per_symbol];
-    std::transform(
-        samples, samples + samples_per_symbol,
-        sb, [this](const std::complex<int8_t> s) { return s - this->offset; }
-    );
-    std::transform(
-        sb, sb + samples_per_symbol,
-        mag2s,
-        [](const std::complex<int8_t> s) { return std::norm(complex_cast<int16_t>(s)); }
-    );
+    // Preamble detection works on differential-encoded signals;
+    // This is tolerant to larger frequency offsets.
+    // 
+    // To differentially demodulate: z[i] = r[i] * conj(r[i-1])
+    // In Euler-form, a received symbol is:
+    // r[t] = A*e^{j(φ+Δω)t}*c[t]
+    //   - c[t] ∈ {±1}
+    //   - c[t] = c[t-1]*a[t] (differential encoding, a[t] is the preabmble pre-encoding, ∈{±1})
+    //   - φ, Δω: carrier initial phase, per-symbol offset
+    // Note: unknow φ (your receiver's local oscillator isn't phase-locked to the transmitter),
+    //       and Δω ≠ 0 because the two crystals never match exactly
+    // Note: a[t] = c[t]*c[t-1] (given the ∈{±1})
+    // 
+    // r[t] * r'[t-1] = (A*e^{j(φ+Δω)t}*c[t]) * (A*e^{-j(φ+Δω)(t-1)}*c[t-1])
+    //                = A^2 * e^{jΔω} * c[t] * c[t-1]
+    //                = A^2 * e^{jΔω} * a[t]
+    // For small Δω, e^{jΔω}~=1; the conjugate product cancels the (unknown) carrier phase
+    // and removes the per-symbol rotation from any frequency offset, leaving a practically
+    // real-valued ±|A|^2 sequence, that is the differentially-encoded preamble bit pattern.
 
-    // run SAMPLES_PER_SYMBOL circular buffers in parallel
     for (int i=0; i<samples_per_symbol; i++) {
-        buffers[i].push(sb[i], mag2s[i]);
+        std::complex<int16_t> r = complex_cast<int16_t>(samples[i]) - complex_cast<int16_t>(offset);
+        std::complex<int16_t> z = r * std::conj(last_samples[i]);
+        last_samples[i] = r; // fit to int16
+        buffers[i].push(std::real(z));
     }
 
     // select the best-looking buffer to compute preamble-match
     uint32_t wes[samples_per_symbol];
-    for (int i=0; i<samples_per_symbol; i++) { 
+    for (int i=0; i<samples_per_symbol; i++) {
         wes[i] = buffers[i].window_energy;
     }
     int idx = std::distance(wes, std::max_element(wes, wes+samples_per_symbol)); // ~maxarg
 
-    // update statistics (sample first element)
+    // update statistics (sample first element). use the raw sample energy here,
+    // not sample_norms[0] (which is now the conjugate-product magnitude |r|^2*|p|^2
+    // and would both overflow s2 and misrepresent the noise variance).
     s1 += samples[0];
-    s2 += mag2s[0];
+    s2 += std::norm(complex_cast<int16_t>(samples[0] - this->offset));
     n++;
 
     // run matchers
@@ -167,7 +178,7 @@ std::optional<TransponderProtocol> FrameDetector::process_baseband(const std::co
     if (buffers[idx].match_preamble(p_rc3) > threshold) {
         return TransponderProtocol::RC3;
     }
-    if (buffers[idx].match_preamble(p_rc4) > threshold) {       
+    if (buffers[idx].match_preamble(p_rc4) > threshold) {
         return TransponderProtocol::RC4;
     }
     return std::nullopt;
@@ -189,7 +200,7 @@ void FrameDetector::reset_statistics_counters() {
 }
 
 float FrameDetector::symbol_energy() const {
-    uint32_t max_energy = buffers[0].window_energy;
+    uint64_t max_energy = buffers[0].window_energy;
     for (int i=1; i<samples_per_symbol; i++) {
         if (buffers[i].window_energy > max_energy) {
             max_energy = buffers[i].window_energy;
@@ -260,6 +271,41 @@ void SymbolReader::read_preamble_symbol(std::complex<float> *dst, std::complex<f
     }
 }
 
+namespace {
+
+struct CarrierEstimate {
+    float frequency; // radian / symbol (per-symbol phase advance Δω)
+    float phase;     // radian, phase φ at symbol index 0
+};
+
+
+// blind estimation: the preamble symbols are unknown, so the BPSK sign is removed
+// by squaring instead of by multiplying with known symbols. This costs a factor of
+// 2 in the usable Δω range (|Δω| < π/2) and leaves the usual π phase ambiguity.
+CarrierEstimate estimate_carrier_blind(const std::complex<float> *resampled, int sampling_point) {
+    // frequency: average (z[i]*conj(z[i-1]))^2. squaring cancels the unknown sign
+    // s[i]*s[i-1] = ±1, leaving |..|^2 * exp(j*2Δω); half the angle is Δω.
+    std::complex<float> freq_acc = {0.0f, 0.0f};
+    for (int i=SymbolReader::filter_delay+1; i<SymbolReader::preamble_length; i++) {
+        auto d = resampled[i*16 + sampling_point] * std::conj(resampled[(i-1)*16 + sampling_point]);
+        freq_acc += d * d;
+    }
+    float frequency = std::arg(freq_acc) / 2.0f;
+
+    // phase: de-rotate each symbol by the known Δω and square to drop the unknown
+    // sign: (z[i]*exp(-j*Δω*i))^2 = a^2 * exp(j*2φ); half the angle is φ.
+    std::complex<float> phase_acc = {0.0f, 0.0f};
+    for (int i=SymbolReader::filter_delay; i<SymbolReader::preamble_length; i++) {
+        auto z = resampled[i*16 + sampling_point] * std::polar(1.0f, -frequency * static_cast<float>(i));
+        phase_acc += z * z;
+    }
+    float phase = std::arg(phase_acc) / 2.0f;
+
+    return { frequency, phase };
+}
+
+} // namespace
+
 void SymbolReader::train_preamble(Frame *frame, std::complex<float> offset, const std::complex<int8_t> *src, int end) {
     const int sample_count = preamble_length * samples_per_symbol;
     const int resampled_size = preamble_length * 16; // resample to 16 samples/symbol
@@ -288,29 +334,34 @@ void SymbolReader::train_preamble(Frame *frame, std::complex<float> offset, cons
     int sampling_point = std::distance(preamble_magnitudes, max_magnitude);
 
     // find symbol phase
-    std::complex<float> rotated2x0 = {0}, rotated2x1 = {0};
-    for (int i=filter_delay; i<preamble_length; i++) {
-        auto sampled_symbol = resampled[i*16 + sampling_point];
-        auto rr = (sampled_symbol*sampled_symbol);
-        // collect phases for first and second halves separately (for frequency offset guesstimation):
-        if (i < (preamble_length+filter_delay)/2) {
-            rotated2x0 += rr;
-        } else {
-            rotated2x1 += rr;
-        }
-    }
+    // std::complex<float> rotated2x0 = {0}, rotated2x1 = {0};
+    // for (int i=filter_delay; i<preamble_length; i++) {
+    //     auto sampled_symbol = resampled[i*16 + sampling_point];
+    //     auto rr = (sampled_symbol*sampled_symbol);
+    //     // collect phases for first and second halves separately (for frequency offset guesstimation):
+    //     if (i < (preamble_length+filter_delay)/2) {
+    //         rotated2x0 += rr;
+    //     } else {
+    //         rotated2x1 += rr;
+    //     }
+    // }
+
+    // auto cest = estimate_carrier_known(resampled, sampling_point, transponder_props(frame->transponder_protocol).dpsk_preamble);
+    auto cest = estimate_carrier_blind(resampled, sampling_point);
+    frame->phase = cest.phase;
+    frame->frequency = cest.frequency;
 
     // update frame
     frame->symsync_sym = sampling_point / num_filters;
     frame->symsync_bank = sampling_point % num_filters;
     frame->symbol_scale = 1.0f / std::sqrt((*max_magnitude) / static_cast<float>(preamble_length));
-    frame->phase = std::arg(rotated2x0 + rotated2x1) / 2.0f;
+    // frame->phase = std::arg(rotated2x0 + rotated2x1) / 2.0f;
     frame->correction = std::polar(frame->symbol_scale, -frame->phase);
     // frequency offset estimation: average the phase of first and second half of the preamble,
     // and find the angle between the two averages. The arg(z0*conj(z1)) is a "known trick" to find
     // the angle. Since it's BPSK, we use the arg(z*z)/2 to have both symbols in a single point.
     // There is (preamble_length-filter_delay)/2 time between the two averages, 2/2 cancels out.
-    frame->frequency = std::arg(rotated2x1 * std::conj(rotated2x0)) / (preamble_length - filter_delay);
+    // frame->frequency = std::arg(rotated2x1 * std::conj(rotated2x0)) / (preamble_length - filter_delay);
 
     // train EQ on preamble
     if ((1.0f / frame->symbol_scale) > EQLMS_TRAINING_THRESHOLD) {
