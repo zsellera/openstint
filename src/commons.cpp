@@ -5,6 +5,7 @@
 #include <format>
 #include <iostream>
 #include <memory>
+#include <set>
 #include <string>
 #include <vector>
 
@@ -37,6 +38,7 @@ static uint64_t timecode = 0ul;
 static std::string storage_dir = ".";
 static std::unique_ptr<RC4FileBasedRegistry> rc4_registry;
 static RC4Trainer rc4_trainer;
+static std::set<uint8_t> ambrc_bans;
 
 bool process_frame(Frame* frame) {
     if (monitor_mode) {
@@ -65,11 +67,32 @@ bool process_frame(Frame* frame) {
         case TransponderProtocol::RC3: {
             uint8_t status_code;
             if (decode_rc3(softbits, &transponder_id, &status_code)) {
+                if (transponder_id >= 10000000) { // not a 7-digit transponder for sure
+                    // check for known status/validation message (to track some statistics)
+                    return ((status_code & 0x07) == 0); 
+                }
                 // status byte:
                 // https://www.rctech.net/forum/showpost.php?p=16244070&postcount=1171
                 // RC4 hybrid and "recent" RC3 indicate status messages in lower 3 bits (0x07 mask)
                 // Older RC3 indicate normal messages by setting all bits 1 (0xff)
-                if (transponder_id < 10000000 && (status_code == 0xff || (status_code & 0x07)==0)) {
+                
+                // Old AMBRc DP transponders send *transponder* frames with all status bits set;
+                // unfortunately newer models can transmit RC3 status/validation messages the same way.
+                // Let's build a block-list for such transponders.
+                if ((status_code & 0xf8) == 0xf8 && (status_code & 0x07) != 0) {
+                    // For a given transponder, top 8 bits of status/validation messages are the same
+                    // We do not report a passing unless there are at least 2 frames detected; we can add
+                    // the problematic transponder_id one to passing output, then remove/ban once a status
+                    // message with the same 8 MSB is detected
+                    uint8_t msb8 = static_cast<uint8_t>((transponder_id >> 16) & 0xff);
+                    if (status_code != 0xff) { // status/validation message for sure
+                        ambrc_bans.insert(msb8);
+                    } else {
+                        if (!ambrc_bans.contains(msb8)) {
+                            passing_detector.append(frame, transponder_id);
+                        }
+                    }
+                } else if ((status_code & 0x07) == 0) { // not a status/validation message for sure
                     passing_detector.append(frame, transponder_id);
                 }
                 // at this point decoding was success; if status byte indicates
