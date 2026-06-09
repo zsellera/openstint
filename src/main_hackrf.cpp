@@ -8,8 +8,10 @@
 #include <iostream>
 #include <string>
 #include <thread>
+#include <vector>
 
 #include "commons.hpp"
+#include "capture.hpp"
 
 #include <libhackrf/hackrf.h>
 
@@ -41,7 +43,21 @@ extern "C" int rx_callback(hackrf_transfer* transfer) {
 
     // Returning 0 indicates "keep going".
     return 0;
-}    
+}
+
+// capture replay callback (capture.cpp interface). hackrf_transfer captures
+// store signed int8 I/Q just like the live transfer buffer, so no conversion
+// is needed — we only reinterpret the raw bytes.
+void file_rx_callback(unsigned char* buf, uint32_t len, void* /*ctx*/) {
+    if (do_exit) {
+        return;
+    }
+
+    uint32_t sample_count = len / 2;
+    const std::complex<int8_t>* samples = reinterpret_cast<const std::complex<int8_t>*>(buf);
+
+    detect_frames(samples, sample_count);
+}
 
 int main(int argc, char** argv) {
     int result = HACKRF_SUCCESS;
@@ -54,6 +70,7 @@ int main(int argc, char** argv) {
     bool bias_tee = false;
     bool amp_enable = false; // hackrf has a custom, +13 dB preamp
     const char* hackrf_serial = nullptr;
+    std::vector<std::string> capture_files;
 
     // process command line arguments
     for (int i = 1; i < argc; ++i) {
@@ -79,18 +96,21 @@ int main(int argc, char** argv) {
             bias_tee = true;
         } else if (arg == "-a") {
             amp_enable = true;
+        } else if (arg == "-c" && i + 1 < argc) {
+            capture_files.push_back(argv[++i]);
         } else if (parse_common_arguments(i, argc, arg, argv)) {
             // do nothing
         } else {
             if (arg != "-h") {
                 std::cerr << "Unknown argument: " << arg << "\n";
             }
-            std::cerr << "Usage: " << argv[0] << " [-d ser_nr] [-l <0..40>] [-v <0..62>] [-a] [-b] [-p tcp_port] [-s dir] [-m] [-t]\n";
+            std::cerr << "Usage: " << argv[0] << " [-d ser_nr] [-l <0..40>] [-v <0..62>] [-a] [-b] [-c file.iq] [-p tcp_port] [-s dir] [-m] [-t]\n";
             std::cerr << "\t-d ser_nr   default:first\tserial number of the desired HackRF\n";
             std::cerr << "\t-l <0..40>  default:" << static_cast<int>(DEFAULT_LNA_GAIN) << "  \tLNA gain (rf signal amplifier; valid values: 0/8/16/24/32/40)\n";
             std::cerr << "\t-v <0..62>  default:" << static_cast<int>(DEFAULT_LNA_GAIN) << "  \tVGA gain (baseband signal amplifier, steps of 2)\n";
             std::cerr << "\t-a          default:off \tEnable preamp (+13 dB to input RF signal)\n";
             std::cerr << "\t-b          default:off \tEnable bias-tee (+3.3 V, 50 mA max)\n";
+            std::cerr << "\t-c file.iq  default:off \tReplay a CS8 IQ capture (hackrf_transfer) instead of using the radio\n";
             std::cerr << "\t-p port     default:" << DEFAULT_ZEROMQ_PORT << "\tZeroMQ publisher port\n";
             std::cerr << "\t-m          default:off \tEnable monitor mode (print received frames to stdout)\n";
             std::cerr << "\t-t          default:off \tUse system clock as the timebase (beware of NTP jumps)\n";
@@ -102,12 +122,22 @@ int main(int argc, char** argv) {
 
     init_commons();
 
-    std::cout << "HackRF RX: freq=" << freq_hz << " Hz, sample_rate=" << sample_rate
-              << " Hz, LNA=" << (int)lna_gain << ", VGA=" << (int)vga_gain << "\n";
-
     // install signal handlers
     std::signal(SIGINT, signal_handler);
     std::signal(SIGTERM, signal_handler);
+
+    // capture replay mode: skip radio init entirely and stream the file(s)
+    // through a dedicated file callback.
+    if (!capture_files.empty()) {
+        std::cout << "HackRF FILE RX: replaying " << capture_files.size()
+                  << " capture file(s), sample_rate=" << sample_rate << " Hz\n";
+        replay_capture(capture_files, sample_rate, file_rx_callback, nullptr, do_exit);
+        std::cerr << "Done.\n";
+        return 0;
+    }
+
+    std::cout << "HackRF RX: freq=" << freq_hz << " Hz, sample_rate=" << sample_rate
+              << " Hz, LNA=" << (int)lna_gain << ", VGA=" << (int)vga_gain << "\n";
 
     // init lib
     result = hackrf_init();
