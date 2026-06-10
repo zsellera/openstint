@@ -19,7 +19,7 @@ Your prices might vary (shipping and taxes).
 </div>
 
 You'll also need transponders:
-* [openstint-transpoder](https://github.com/zsellera/openstint-transponder) is a DIY open-source alternative. Go to JLCPCB for larger quantities (40pcs/$200, 80pcs/$300). For smaller quantities, ask around on [rctech forum](https://rctech.net/forum/radio-electronics/1137693-openstint-laptiming-decoder.html), or contact me via zsellera@gmail.com email address.
+* [openstint-transpoder](https://github.com/zsellera/openstint-transponder) is a DIY open-source alternative. Go to JLCPCB for larger quantities (40pcs/$200, 80pcs/$300). For smaller quantities, ask around on [rctech forum](https://rctech.net/forum/radio-electronics/1137693-openstint-laptiming-decoder.html) - see [purchase options](purchase-transponder.md#purchase).
 * AMB RC3 (EOL), MyLaps RC4 ($100) and RC4-Hybrid ($150), as well as MRT mPTX ($70) and other RC3-clones are supported.
 * [RCHourGlass](https://github.com/mv4wd/RCHourglass/tree/master/Firmware/Transponder) transponders are also supported.
  
@@ -55,6 +55,6 @@ Using OpenStint is this easy:
 
 ### Lap counting and scoring
 
-I develop [LapBeeps](https://lapbeeps.com), it support OpenStint natively.
+I develop [LapBeeps](scoring-lapbeeps.md), it support OpenStint natively.
 
 There is a bridge for [ZRound](https://www.zround.com/index.php/download-mananger/) and [RCGTiming](https://rcgtiming.com/), translating OpenStint's protocol to their native ones. These are packaged with the project in its .zip file.

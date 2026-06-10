@@ -61,3 +61,8 @@ _deps
 ##### VisualStudioCode
 .vscode/*
 *.code-workspace
+
+## website-related
+node_modules/
+**/.vitepress/dist/
+**/.vitepress/cache/

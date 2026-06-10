@@ -25,7 +25,7 @@ sudo apt-get upgrade -y
 
 ## 3. Install Dependencies & Compile
 
-Follow the compilation instructions in [README.md](../README.md):
+Follow the compilation instructions in [README.md](https://github.com/zsellera/openstint/blob/master/README.md):
 
 ```bash
 sudo apt-get install -y cmake build-essential libtool autoconf \
@@ -94,4 +94,4 @@ sudo systemctl daemon-reload
 sudo systemctl restart openstint.service
 ```
 
-See [README.md](../README.md) for available command-line arguments.
+See [README.md](https://github.com/zsellera/openstint/blob/master/README.md) for available command-line arguments.

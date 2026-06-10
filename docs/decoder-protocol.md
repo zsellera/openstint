@@ -4,7 +4,7 @@ This page describes how to get information out of the OpenStint decoder software
 
 The decoder protocol costsis of one-way *text-based* messages over a *ZeroMQ pub-sub* channel.
 * [ZeroMQ](https://zguide.zeromq.org/) makes sure messages are consumed as a single entity, in a fault-tolearant manner. There is no need for custom frame detection (ie. P3's `0x8D` or Cano's `\n`), ZeroMQ does this for us ("consumed as a single entity"). There is also little to no need to worry about lost TCP connections, the ZeroMQ client reconnects when possible ("fault tolerant"). Note, the pub-sub structure does not buffer messages though, meaning unseen messages are lost.
-* Messages are human-readable. Check out [example subscriber](../integrations/subscriber.py) for a quick demo.
+* Messages are human-readable. Check out [example subscriber](https://github.com/zsellera/openstint/blob/master/integrations/subscriber.py) for a quick demo.
 
 ## Protocol messages
 
@@ -30,7 +30,7 @@ except ValueError:
     continue  # skip malformed data
 ```
 
-For a working laptimer example, check out [laptimer.py](../integrations/laptimer.py).
+For a working laptimer example, check out [laptimer.py](https://github.com/zsellera/openstint/blob/master/integrations/laptimer.py).
 
 Other message parameters are reserved for future use. As such, do not do something like this, as it might fail with future versions:
 

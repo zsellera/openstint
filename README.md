@@ -85,18 +85,6 @@ Usage: openstint_rtlsdr [-d ser_nr] [-g <gain_dB>] [-D] [-b] [-p tcp_port] [-m] 
 	-s dir      default:.   	RC4 registry storage directory
 ```
 
-## HackRF One or RTL-SDR?
-
-Initial results show 2-3 dB better performace with a HackRF One when compared to an RTL-SDR v4. Given the ~40 dB effective dynamic range of these devices, this is not noticable in practice (if it is, re-think the antenna setup). A HackRF One clone costs 3x more as an RTL-SDR v4 dongle; an original from Great Scott Gadgets is 6-8x more expensive.
-
-For permanent setups, prefer the HackRF One though. The RTL-SDR dongle heats up considerably. I would not put it into an enclosed electrical box, and I would not leave it exposed to sunshine neither. The HackRF board is much less dense, thermal management is not a problem there.
-
-| Radio      | Typ. price | Est. dynamic range | Thermal | Default gain          | LSB Sensitivity   | Notes           |
-|------------|------------|--------------------|---------|-----------------------|-------------------|-----------------|
-| RTL-SDR v3 | $35        | 40 dB              | OK      | no gain control       | 2 uVpp (-110 dBm) | a bit noisy     |
-| RTL-SDR v4 | $40        | 37 dB              | warm    | gain:20.7             | 8 uVpp (-98 dBm)  | in-band images! |
-| HackRF One | $120       | 39 dB              | OK      | PA:off LNA:24, VGA:20 | 17 uVpp (-91 dBm) | -               |
-
 ## Contribution
 
 Submit PRs according to the project's core values:
