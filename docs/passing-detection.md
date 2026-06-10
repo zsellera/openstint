@@ -8,7 +8,7 @@ If you don't want to stay to nerd out, these are the main takeaways:
 
 ## Correct transponder placement: transmit coil is paralell to pickup loop
 
-<img width="640" alt="image" src="passing-detection/transponder-normal-fieldlines.png" />
+<img width="640" alt="image" src="./passing-detection/transponder-normal-fieldlines.png" />
 
 1. As the transponder is getting closer to the pickup loop, the magnetic fieldlines cross the loop, and gets detected.
 2. There is a point, where as many down-pointing fieldlines cross the loop as upward-pointing, forming a zero. It happens when the transponder is approximately right over one of the wires.
@@ -19,19 +19,19 @@ If you don't want to stay to nerd out, these are the main takeaways:
 
 ### Transponder close to the loop
 
-<img width="640" alt="image" src="passing-detection/transponder-normal-close.png" />
+<img width="640" alt="image" src="./passing-detection/transponder-normal-close.png" />
 
 ### Transponder distant from the loop
 
-<img width="640" alt="image" src="passing-detection/transponder-normal-distant.png" />
+<img width="640" alt="image" src="./passing-detection/transponder-normal-distant.png" />
 
 ## Transponder perpendicular to pickup loop
 
-<img width="640" alt="image" src="passing-detection/transponder-perpendicular-fieldlines.png" />
+<img width="640" alt="image" src="./passing-detection/transponder-perpendicular-fieldlines.png" />
 
 In this setup, the fieldlines cross the loop as the transponder closes and leaves the loop, and create a zero when the transponder is right in the middle. Maximum field strength is about when the transponder is somewhere before the loop.
 
-<img width="640" alt="image" src="passing-detection/transponder-perpendicular-rssi.png" />
+<img width="640" alt="image" src="./passing-detection/transponder-perpendicular-rssi.png" />
 
 ## AVOID: transponder's plane is parallel to travel direction, perpendicular to pickup loop
 
@@ -41,4 +41,4 @@ In this arrangement fieldlines cancel each other out, and detection is theoretic
 
 In an artificial environment, the following double tranponder arrangement was able to reliably tell if the vehicle passed the loop forward or reverse (the transponders were placed ~15 mm from each other, and one transponder was detected a few miliseconds earlier than the other)
 
-<img width="640" alt="image" src="passing-detection/transponder-layout.png" />
+<img width="640" alt="image" src="./passing-detection/transponder-layout.png" />
