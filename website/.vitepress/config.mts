@@ -21,11 +21,13 @@ export default defineConfig({
 
     nav: [
       { text: 'Home', link: '/' },
+      { text: 'Introduction', link: '/docs/introduction' },
       { text: 'Tutorials', link: '/docs/setup-simple-rtlsdr' },
       { text: 'Buy Transponders', link: '/docs/purchase-transponder' }
     ],
 
     sidebar: [
+      { text: 'Introduction', link: '/docs/introduction' },
       {
         text: 'Tutorials',
         items: [
