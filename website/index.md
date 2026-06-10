@@ -7,7 +7,7 @@ hero:
   text: "HackRF & RTL-SDR Powered RC Lap Timing Decoder"
   tagline: "OpenStint is an open-source project reading AMB-style near-field transponders using inexpensive software-defined radios (SDR)."
   image:
-    src: ./openstint-decoder.png
+    src: /openstint-decoder.png
     alt: Simple setup with Raspbery Pi Model 3 B+
   actions:
     - theme: brand
