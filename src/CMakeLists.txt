@@ -8,7 +8,7 @@ endif()
 
 set(CMAKE_CXX_FLAGS "-Wall -Wextra -Wno-return-type-c-linkage -Wno-deprecated-declarations")
 set(CMAKE_CXX_FLAGS_DEBUG "-g")
-set(CMAKE_CXX_FLAGS_RELEASE "-O3")
+set(CMAKE_CXX_FLAGS_RELEASE "-O3 -ffast-math")
 
 option(USE_HACKRF "Enable HackRF support" ON)
 option(USE_RTLSDR "Enable RTL-SDR support" ON)

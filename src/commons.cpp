@@ -133,10 +133,11 @@ void detect_frames(const std::complex<int8_t>* samples, std::size_t sample_count
                     timestamp + (idx * 1000000ul / SAMPLE_RATE),
                     timecode + idx
                 );
-                symbol_reader.read_preamble(&frame, frame_detector.dc_offset(), samples, idx+SAMPLES_PER_SYMBOL);
+                symbol_reader.train_preamble(&frame, samples, idx+SAMPLES_PER_SYMBOL, frame_detector.dc_offset());
+                symbol_reader.read_preamble(&frame, samples, idx+SAMPLES_PER_SYMBOL, frame_detector.dc_offset());
             }
         } else if (frame_parse_mode == FRAME_FOUND) {
-            symbol_reader.read_symbol(&frame, frame_detector.dc_offset(), samples+idx);
+            symbol_reader.read_symbol(&frame, samples+idx, frame_detector.dc_offset());
             if (symbol_reader.is_frame_complete(&frame)) {
                 frame_parse_mode = FRAME_SEEK;
                 bool frame_processed = process_frame(&frame);
@@ -235,7 +236,7 @@ void report_detections() {
         publisher->send(zmq::buffer(report), zmq::send_flags::none);
     }
 
-    std::vector<Passing> passings = passing_detector.identify_passings(now_ts - 250000ul);
+    std::vector<Passing> passings = passing_detector.identify_passings(now_ts > 250000ul ? (now_ts-250000ul) : 0ul);
     for (const auto& passing : passings) {
         const std::string report = std::format("P {} {} {} {:.2f} {} {}",
             reporting_timestamp(passing.timestamp, now_ts, now_sysclk),
