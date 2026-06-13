@@ -49,10 +49,7 @@ struct Frame {
     uint64_t timestamp; // steady time
     uint64_t timecode;  // sample counter
     
-    // preamble-data
-    // what is the optimal sampling point when reading
-    int symsync_sym = 0;
-    int symsync_bank = 0;
+    // based on preamble-data
     float symbol_scale = 0;
     float phase = 0;
     float phase_per_symbol = 0; // radian/symbol
@@ -103,9 +100,11 @@ public:
 class SymbolReader {
 public:
     static constexpr int samples_per_symbol = SAMPLES_PER_SYMBOL;
-    static constexpr int fseq_syms = 3;
+    static constexpr int fseq_halflen = 1;                       // symbols of past/future context
+    static constexpr int fseq_syms = 2 * fseq_halflen + 1;       // total filter span (symbols)
     static constexpr int preamble_length = 16;
-    static constexpr int preamble_symbol_count = (fseq_syms + preamble_length - 1);
+    // window = fseq_halflen lead + preamble + fseq_halflen trailing (future) symbols
+    static constexpr int preamble_symbol_count = preamble_length + 2 * fseq_halflen;
     static constexpr int preamble_buffer_size = preamble_symbol_count * samples_per_symbol;
     static constexpr int reserve_buffer_size = preamble_buffer_size;
     
@@ -124,7 +123,7 @@ private:
     std::complex<int8_t> reserve_buffer[reserve_buffer_size];
 
     // when a preamble is matched, copy received data here for further processing:
-    // - the EQ filter needs (fseq_syms - 1) worth of symbols
+    // - the centered EQ filter needs fseq_halflen lead + fseq_halflen trailing symbols
     // - there is the preamble (16 symbols)
     std::complex<float> preamble_buffer[preamble_buffer_size];
 

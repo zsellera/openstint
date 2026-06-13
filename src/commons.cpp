@@ -24,7 +24,8 @@ static int zmq_port = DEFAULT_ZEROMQ_PORT;
 static zmq::context_t* zmq_context = nullptr;
 static zmq::socket_t* publisher = nullptr;
 
-static enum FrameParseMode { FRAME_SEEK, FRAME_FOUND } frame_parse_mode = FRAME_SEEK;
+static enum FrameParseMode { FRAME_SEEK, FRAME_WAIT, FRAME_FOUND } frame_parse_mode = FRAME_SEEK;
+static int pending_trail = 0; // symbols left to wait before the centered EQ window is full
 static FrameDetector frame_detector(0.84f - 0.01f*SAMPLES_PER_SYMBOL);
 static SymbolReader symbol_reader;
 static Frame frame;
@@ -126,15 +127,26 @@ void detect_frames(const std::complex<int8_t>* samples, std::size_t sample_count
         if (frame_parse_mode == FRAME_SEEK) {
             const std::optional<TransponderProtocol> detected = frame_detector.process_baseband(samples+idx);
             if (detected) {
-                frame_parse_mode = FRAME_FOUND;
+                frame_parse_mode = FRAME_WAIT;
                 frame_detected = true; // do not use this buffer for noisefloor calculation
                 frame = Frame(
                     detected.value(),
                     timestamp + (idx * 1000000ul / SAMPLE_RATE),
                     timecode + idx
                 );
-                symbol_reader.train_preamble(&frame, samples, idx+SAMPLES_PER_SYMBOL, frame_detector.dc_offset());
-                symbol_reader.read_preamble(&frame, samples, idx+SAMPLES_PER_SYMBOL, frame_detector.dc_offset());
+                // defer training by fseq_halflen symbols: the centered EQ needs the
+                // trailing (future) symbols, which become ordinary past samples once
+                // they arrive. timing stays anchored at this detection point.
+                pending_trail = SymbolReader::fseq_halflen;
+            }
+        } else if (frame_parse_mode == FRAME_WAIT) {
+            // count the trailing symbols of the centered EQ window; once they are in,
+            // train/read the preamble looking both back (lead) and ahead (trailing).
+            if (--pending_trail == 0) {
+                const int end = idx + SAMPLES_PER_SYMBOL;
+                symbol_reader.train_preamble(&frame, samples, end, frame_detector.dc_offset());
+                symbol_reader.read_preamble(&frame, samples, end, frame_detector.dc_offset());
+                frame_parse_mode = FRAME_FOUND;
             }
         } else if (frame_parse_mode == FRAME_FOUND) {
             symbol_reader.read_symbol(&frame, samples+idx, frame_detector.dc_offset());

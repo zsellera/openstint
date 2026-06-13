@@ -122,7 +122,6 @@ std::ostream& operator <<(std::ostream& os, const Frame& f) {
               << " EVM:" << f.evm()
               << " FREQ:" << (f.phase_per_symbol / (2.0f * 3.14) * 1250000.0f)
               << " MAG:" << f.symbol_magnitude()
-              << " SYMSYNC:[" << f.symsync_sym << "," << f.symsync_bank << "]"
               << " SYMBOLS:[" << ssym.str() << "]"
               << " SOFTBITS:[" << sbits.str() << "]";
 }
@@ -235,14 +234,14 @@ void SymbolReader::train_preamble(Frame *frame, const std::complex<int8_t> *src,
     // setup AGC based on preamble
     frame->symbol_scale = 1.41f / std::sqrt(window_energy<preamble_buffer_size>(preamble_buffer)/static_cast<float>(preamble_symbol_count));
 
-    // the preamble starts after the (fseq_syms-1) lead symbols reserved for the EQ
+    // the preamble starts after the fseq_halflen lead symbols reserved for the EQ
     auto [phase0, phase_per_symbol] = estimate_phase_freq(frame, 2 /*shift*/);
-    frame->phase = phase0 - phase_per_symbol*(fseq_syms-1); // set to init sequence
+    frame->phase = phase0 - phase_per_symbol*fseq_halflen; // set to init sequence
     frame->phase_per_symbol = phase_per_symbol;
 
     // scale & rotate buffer (do it once, so EQ training is faster)
     for (int i=0; i<preamble_buffer_size; i++) {
-        float k = static_cast<float>(i) / samples_per_symbol - static_cast<float>(fseq_syms - 1);
+        float k = static_cast<float>(i) / samples_per_symbol - static_cast<float>(fseq_halflen);
         preamble_buffer[i] *= std::polar(frame->symbol_scale, -k*phase_per_symbol - phase0);
     }
     
@@ -257,7 +256,7 @@ void SymbolReader::train_preamble(Frame *frame, const std::complex<int8_t> *src,
 
     eqlms_cccf_reset(sym_eq); // reset the original parameters
 
-    train_fseq(frame, eq_mu_train*4.0f);
+    train_fseq(frame, eq_mu_train*3.0f);
     train_fseq(frame, eq_mu_train);
     train_fseq(frame, eq_mu_train);
 
@@ -281,7 +280,7 @@ void SymbolReader::load_preamble_buffer(const std::complex<int8_t> *src, int end
 
 std::pair<float, float> SymbolReader::estimate_phase_freq(Frame *frame, int shift) {
     const int n = preamble_length * samples_per_symbol;
-    const int start = (fseq_syms - 1) * samples_per_symbol;
+    const int start = fseq_halflen * samples_per_symbol;
     const auto &preamble_up = transponder_props(frame->transponder_protocol).preamble_up;
 
     // y = sample-spaced preamble with the BPSK (±1) modulation stripped off
@@ -315,18 +314,22 @@ void SymbolReader::train_fseq(Frame *frame, float mu) {
     // set the LMS learning rate for this epoch
     eqlms_cccf_set_bw(sym_eq, mu);
 
-    // prime the filter with the (fseq_syms - 1) lead symbols, so the first
-    // execute() output aligns with the first known preamble symbol
+    // prime the filter with a full window (fseq_syms symbols): fseq_halflen lead +
+    // the first preamble symbol + fseq_halflen trailing, so the first execute()
+    // output is centered on the first known preamble symbol
     int idx = 0;
-    for (int i=0; i<(fseq_syms - 1) * samples_per_symbol; i++) {
+    for (int i=0; i<fseq_syms * samples_per_symbol; i++) {
         eqlms_cccf_push(sym_eq, preamble_buffer[idx++]);
     }
 
-    // from here on, push one symbol (all samples_per_symbol samples) at a time,
-    // equalize, and train towards the known preamble symbol
+    // from here on, advance one symbol (all samples_per_symbol samples) at a time,
+    // equalize, and train towards the known preamble symbol; the window stays
+    // centered on the symbol being trained
     for (int s=0; s<preamble_length; s++) {
-        for (int j=0; j<samples_per_symbol; j++) {
-            eqlms_cccf_push(sym_eq, preamble_buffer[idx++]);
+        if (s > 0) {
+            for (int j=0; j<samples_per_symbol; j++) {
+                eqlms_cccf_push(sym_eq, preamble_buffer[idx++]);
+            }
         }
         std::complex<float> d_hat;
         eqlms_cccf_execute(sym_eq, &d_hat);
