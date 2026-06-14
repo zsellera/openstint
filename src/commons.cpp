@@ -10,6 +10,7 @@
 
 #include <zmq.hpp>
 
+#include "crash_handler.hpp"
 #include "preamble.hpp"
 #include "transponder.hpp"
 #include "frame.hpp"
@@ -170,6 +171,8 @@ bool parse_common_arguments(int& i, const int argc, const std::string& arg, char
 }
 
 void init_commons() {
+    install_crash_handler();
+
     // transponder processing (allocate viterbi trellis); TODO RAII
     init_transponders();
 

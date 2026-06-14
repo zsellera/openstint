@@ -7,7 +7,7 @@ if(NOT CMAKE_BUILD_TYPE)
 endif()
 
 set(CMAKE_CXX_FLAGS "-Wall -Wextra -Wno-return-type-c-linkage -Wno-deprecated-declarations")
-set(CMAKE_CXX_FLAGS_DEBUG "-g")
+set(CMAKE_CXX_FLAGS_DEBUG "-O2 -g -fno-omit-frame-pointer -fno-inline")
 set(CMAKE_CXX_FLAGS_RELEASE "-O3")
 
 option(USE_HACKRF "Enable HackRF support" ON)
@@ -24,6 +24,7 @@ set(OPENSTINT_BASE_SOURCES
     commons.cpp
     capture.cpp
     rc4.cpp
+    crash_handler.cpp
 )
 
 # Required dependencies
@@ -50,6 +51,10 @@ if(USE_HACKRF)
       cppzmq
       m
     )
+
+    if(WIN32)
+      target_link_libraries(openstint_hackrf dbghelp)
+    endif()
 endif()
 
 if(USE_RTLSDR)
@@ -67,4 +72,8 @@ if(USE_RTLSDR)
       cppzmq
       m
     )
+
+    if(WIN32)
+      target_link_libraries(openstint_rtlsdr dbghelp)
+    endif()
 endif()
