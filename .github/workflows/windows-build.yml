@@ -2,6 +2,9 @@ name: Windows Build
 
 on:
   workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
 
 permissions:
   contents: write
@@ -100,29 +103,18 @@ jobs:
         zip -r ../openstint-windows-x64.zip .
         cd ..
 
-    - name: Compute release tag
-      id: release_tag
-      shell: bash
-      run: |
-        BRANCH="${GITHUB_REF_NAME}"
-        TAG="nightly-${BRANCH}"
-        echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
-        echo "name=Nightly Windows Build (${BRANCH})" >> "$GITHUB_OUTPUT"
-
     - name: Create or update release
+      if: startsWith(github.ref, 'refs/tags/v')
       uses: softprops/action-gh-release@v1
       with:
-        tag_name: ${{ steps.release_tag.outputs.tag }}
-        name: ${{ steps.release_tag.outputs.name }}
+        tag_name: ${{ github.ref_name }}
+        name: ${{ github.ref_name }}
         body: |
           Automated build of OpenStint for Windows 64-bit
 
-          Branch: ${{ github.ref_name }}
           Built from commit ${{ github.sha }}
-
-          **Note:** This is an automated pre-release build.
         files: openstint-windows-x64.zip
-        prerelease: true
+        prerelease: false
         draft: false
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
