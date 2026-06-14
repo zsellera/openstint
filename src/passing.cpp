@@ -29,6 +29,7 @@ TransponderSystem transponder_system(TransponderProtocol ttype) {
         case TransponderProtocol::RC4:
         return TransponderSystem::AMB;
     }
+    return TransponderSystem::OpenStint; // silence compile-warning
 }
 
 std::string transponder_system_name(TransponderSystem tsys) {
@@ -38,6 +39,7 @@ std::string transponder_system_name(TransponderSystem tsys) {
         case TransponderSystem::AMB:
         return "AMB";
     }
+    return "OPN"; // silence warning
 }
 
 void PassingDetector::append(const Frame* frame, uint32_t transponder_id) {

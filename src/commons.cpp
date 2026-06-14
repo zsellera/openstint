@@ -111,6 +111,14 @@ bool process_frame(Frame* frame) {
 void detect_frames(const std::complex<int8_t>* samples, std::size_t sample_count) {
     const uint64_t timestamp = duration_cast<microseconds>(steady_clock::now().time_since_epoch()).count() - startup_ts;
 
+    // on USB hiccup, there might be a super-small buffer, which can not even fit
+    // the preamble; these buffers should be dropped as bougus to prevent indexing
+    // issues later on.
+    if (sample_count < SymbolReader::reserve_buffer_size) {
+        timecode += sample_count;
+        return; // no meaningful work here
+    }
+
     bool frame_detected = false;
     for (uint32_t idx=0; (idx+SAMPLES_PER_SYMBOL)<=sample_count; idx+=SAMPLES_PER_SYMBOL) {
         if (frame_parse_mode == FRAME_SEEK) {
