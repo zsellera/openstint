@@ -65,10 +65,10 @@ const uint8_t* Frame::bits() {
 
     // start-of-frame 32 bits contain the preamble
     uint32_t sof = concat_bits32(softbits.data());
-    int pos = preamble_pos(sof, transponder_props(transponder_protocol).bpsk_preamble);
+    int pos = preamble_pos(sof, transponder_props(transponder_protocol).preamble);
     if (pos < 0) {
         // try with bits inverted:
-        pos = preamble_pos(~sof, transponder_props(transponder_protocol).bpsk_preamble);
+        pos = preamble_pos(~sof, transponder_props(transponder_protocol).preamble);
         if (pos < 0) { // preamble not found
             return nullptr;
         } else { // preamble found, but BPSK does not know the correct phase
@@ -130,22 +130,36 @@ std::ostream& operator <<(std::ostream& os, const Frame& f) {
 FrameDetector::FrameDetector(float _threshold) : threshold(_threshold) {};
 
 std::optional<TransponderProtocol> FrameDetector::process_baseband(const std::complex<int8_t> *samples) {
-    // remove dc-offset + calculate magninude^2 of each sample
-    std::complex<int8_t> sb[samples_per_symbol];
-    uint16_t mag2s[samples_per_symbol];
-    std::transform(
-        samples, samples + samples_per_symbol,
-        sb, [this](const std::complex<int8_t> s) { return s - this->offset; }
-    );
-    std::transform(
-        sb, sb + samples_per_symbol,
-        mag2s,
-        [](const std::complex<int8_t> s) { return std::norm(complex_cast<int16_t>(s)); }
-    );
-
-    // run SAMPLES_PER_SYMBOL circular buffers in parallel
+    // Preamble detection works on differential-encoded signals;
+    // This is tolerant to larger frequency offsets.
+    // 
+    // To differentially demodulate: z[i] = r[i] * conj(r[i-1])
+    // In Euler-form, a received symbol is:
+    // r[t] = A*e^{j(φ+Δω)t}*c[t]
+    //   - c[t] ∈ {±1}
+    //   - c[t] = c[t-1]*a[t] (differential encoding, a[t] is the preabmble pre-encoding, ∈{±1})
+    //   - φ, Δω: carrier initial phase, per-symbol offset
+    // Note: unknow φ (receiver's local oscillator isn't phase-locked to the transmitter),
+    //       and Δω ≠ 0 because the two crystals never match exactly
+    // Note: a[t] = c[t]*c[t-1] (given the ∈{±1})
+    // 
+    // r[t] * r'[t-1] = (A*e^{j(φ+Δω)t}*c[t]) * (A*e^{-j(φ+Δω)(t-1)}*c[t-1])
+    //                = A^2 * e^{jΔω} * c[t] * c[t-1]
+    //                = A^2 * e^{jΔω} * a[t]
+    // For small Δω, e^{jΔω}~=1; the conjugate product cancels the (unknown) carrier phase
+    // and removes the per-symbol rotation from any frequency offset, leaving a practically
+    // real-valued ±|A|^2 sequence, that is the differentially-encoded preamble bit pattern.
+    std::complex<int32_t> r[samples_per_symbol];
     for (int i=0; i<samples_per_symbol; i++) {
-        buffers[i].push(sb[i], mag2s[i]);
+        r[i] = complex_cast<int32_t>(samples[i]) - offset;
+    }
+    for (int i=0; i<samples_per_symbol; i++) {
+        std::complex<int32_t> z = r[i] * std::conj(last_samples[i]);
+        int32_t zr = std::real(z) / 2;
+        buffers[i].push(static_cast<int16_t>(zr), zr*zr);
+    }
+    for (int i=0; i<samples_per_symbol; i++) {
+        last_samples[i] = r[i];
     }
 
     // select the best-looking buffer to compute preamble-match
@@ -157,7 +171,7 @@ std::optional<TransponderProtocol> FrameDetector::process_baseband(const std::co
 
     // update statistics (sample first element)
     s1 += samples[0];
-    s2 += mag2s[0];
+    s2 += std::norm(r[0]);
     n++;
 
     // run matchers
