@@ -5,12 +5,12 @@
 #include <format>
 #include <iostream>
 #include <memory>
-#include <set>
 #include <string>
 #include <vector>
 
 #include <zmq.hpp>
 
+#include "crash_handler.hpp"
 #include "preamble.hpp"
 #include "transponder.hpp"
 #include "frame.hpp"
@@ -26,7 +26,7 @@ static zmq::socket_t* publisher = nullptr;
 
 static enum FrameParseMode { FRAME_SEEK, FRAME_WAIT, FRAME_FOUND } frame_parse_mode = FRAME_SEEK;
 static int pending_trail = 0; // symbols left to wait before the centered EQ window is full
-static FrameDetector frame_detector(0.84f - 0.01f*SAMPLES_PER_SYMBOL);
+static FrameDetector frame_detector(0.7f);
 static SymbolReader symbol_reader;
 static Frame frame;
 static PassingDetector passing_detector;
@@ -39,7 +39,7 @@ static uint64_t timecode = 0ul;
 static std::string storage_dir = ".";
 static std::unique_ptr<RC4FileBasedRegistry> rc4_registry;
 static RC4Trainer rc4_trainer;
-static std::set<uint8_t> ambrc_bans;
+static AmbRcBlacklist ambrc_blacklist;
 
 bool process_frame(Frame* frame) {
     if (monitor_mode) {
@@ -77,22 +77,12 @@ bool process_frame(Frame* frame) {
                 // RC4 hybrid and "recent" RC3 indicate status messages in lower 3 bits (0x07 mask)
                 // Older RC3 indicate normal messages by setting all bits 1 (0xff)
                 
-                // Old AMBRc DP transponders send *transponder* frames with all status bits set;
+                // Old AMBRc DP transponders send *transponder* frames with all status bits set (0xff);
                 // unfortunately newer models can transmit RC3 status/validation messages the same way.
                 // Let's build a block-list for such transponders.
-                if ((status_code & 0xf8) == 0xf8 && (status_code & 0x07) != 0) {
-                    // For a given transponder, top 8 bits of status/validation messages are the same
-                    // We do not report a passing unless there are at least 2 frames detected; we can add
-                    // the problematic transponder_id one to passing output, then remove/ban once a status
-                    // message with the same 8 MSB is detected
-                    uint8_t msb8 = static_cast<uint8_t>((transponder_id >> 16) & 0xff);
-                    if (status_code != 0xff) { // status/validation message for sure
-                        ambrc_bans.insert(msb8);
-                    } else {
-                        if (!ambrc_bans.contains(msb8)) {
-                            passing_detector.append(frame, transponder_id);
-                        }
-                    }
+                ambrc_blacklist.process(frame->timestamp, status_code, transponder_id);
+                if (status_code == 0xff && !ambrc_blacklist.check_banned(transponder_id)) {
+                    passing_detector.append(frame, transponder_id);
                 } else if ((status_code & 0x07) == 0) { // not a status/validation message for sure
                     passing_detector.append(frame, transponder_id);
                 }
@@ -121,6 +111,14 @@ bool process_frame(Frame* frame) {
 
 void detect_frames(const std::complex<int8_t>* samples, std::size_t sample_count) {
     const uint64_t timestamp = duration_cast<microseconds>(steady_clock::now().time_since_epoch()).count() - startup_ts;
+
+    // on USB hiccup, there might be a super-small buffer, which can not even fit
+    // the preamble; these buffers should be dropped as bougus to prevent indexing
+    // issues later on.
+    if (sample_count < SymbolReader::reserve_buffer_size) {
+        timecode += sample_count;
+        return; // no meaningful work here
+    }
 
     bool frame_detected = false;
     for (uint32_t idx=0; (idx+SAMPLES_PER_SYMBOL)<=sample_count; idx+=SAMPLES_PER_SYMBOL) {
@@ -194,6 +192,8 @@ bool parse_common_arguments(int& i, const int argc, const std::string& arg, char
 }
 
 void init_commons() {
+    install_crash_handler();
+
     // transponder processing (allocate viterbi trellis); TODO RAII
     init_transponders();
 

@@ -29,6 +29,7 @@ TransponderSystem transponder_system(TransponderProtocol ttype) {
         case TransponderProtocol::RC4:
         return TransponderSystem::AMB;
     }
+    return TransponderSystem::OpenStint; // silence compile-warning
 }
 
 std::string transponder_system_name(TransponderSystem tsys) {
@@ -38,6 +39,7 @@ std::string transponder_system_name(TransponderSystem tsys) {
         case TransponderSystem::AMB:
         return "AMB";
     }
+    return "OPN"; // silence warning
 }
 
 void PassingDetector::append(const Frame* frame, uint32_t transponder_id) {
@@ -415,8 +417,10 @@ std::vector<TimeSync> PassingDetector::identify_timesyncs(uint64_t margin) {
 }
 
 std::vector<uint32_t> PassingDetector::passings_between(TransponderSystem tsys, uint64_t from, uint64_t until) {
+    std::lock_guard<std::mutex> lock(mutex);
     std::vector<uint32_t> transponders;
     for (const auto& [transponder_key, detection_vec] : detections) {
+        if (detection_vec.empty()) { continue; }
         if (transponder_key.first == tsys &&
             detection_vec.front().timestamp <= until &&
             detection_vec.back().timestamp >= from) {

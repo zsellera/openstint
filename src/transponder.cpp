@@ -104,3 +104,23 @@ int decode_rc3(const uint8_t *softbits, uint32_t *transponder_id, uint8_t *statu
     // the last byte must be zero (tail==0 error check)
     return (trail == 0);
 }
+
+void AmbRcBlacklist::process(uint64_t timestamp, uint8_t status_code, uint32_t transponder_id) {
+    // not a candidate status/validation message:
+    if ((status_code & 0xf8) != 0xf8) return; // not an AmbRc message
+    if ((status_code & 0x07) == 0) return; // no counter set
+
+    uint8_t msb8 = static_cast<uint8_t>((transponder_id >> 16) & 0xff);
+    if (status_code != 0xff) { // status/validation message for sure
+        msb8_timestamps[msb8] = timestamp;
+    } else { // might be a status/validation message
+        auto it = msb8_timestamps.find(msb8);
+        if (it != msb8_timestamps.end() && timestamp <= (it->second + 250000ul)) {
+            banned_transponders.insert(transponder_id);
+        }
+    }
+}
+
+bool AmbRcBlacklist::check_banned(uint32_t transponder_id) const {
+    return banned_transponders.contains(transponder_id);
+}

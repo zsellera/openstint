@@ -2,6 +2,9 @@ name: Windows Build
 
 on:
   workflow_dispatch:
+  push:
+    tags:
+      - 'v*'
 
 permissions:
   contents: write
@@ -9,6 +12,10 @@ permissions:
 jobs:
   build:
     runs-on: windows-latest
+
+    strategy:
+      matrix:
+        build_type: [Release, Debug]
 
     steps:
     - name: Checkout code
@@ -64,15 +71,17 @@ jobs:
       run: |
         mkdir build
         cd build
-        cmake -G "Ninja" -DCMAKE_BUILD_TYPE=Release ..
+        cmake -G "Ninja" -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} ..
         ninja
 
     - name: Setup Python
+      if: matrix.build_type == 'Release'
       uses: actions/setup-python@v5
       with:
         python-version: '3.12'
 
     - name: Build bridge .exe
+      if: matrix.build_type == 'Release'
       run: |
         pip install pyzmq tornado pyinstaller
         pyinstaller --onefile --name bridge-zround --hidden-import=zmq --hidden-import=tornado integrations/bridge-zround.py
@@ -86,43 +95,48 @@ jobs:
         cp build/src/openstint_rtlsdr.exe openstint-windows-x64/
         # Copy required DLLs (union of both binaries)
         ldd build/src/openstint_hackrf.exe build/src/openstint_rtlsdr.exe | grep mingw64 | awk '{print $3}' | sort -u | xargs -I{} cp {} openstint-windows-x64/ || true
-        cp dist/bridge-zround.exe openstint-windows-x64/
-        cp dist/bridge-rcgtiming.exe openstint-windows-x64/
         cp README.md openstint-windows-x64/
         cp LICENSE openstint-windows-x64/
         cp tools/start.bat openstint-windows-x64/
         cp -r integrations openstint-windows-x64/
 
-    - name: Create ZIP for release
+    - name: Add bridge executables
+      if: matrix.build_type == 'Release'
       shell: msys2 {0}
       run: |
-        cd openstint-windows-x64
-        zip -r ../openstint-windows-x64.zip .
-        cd ..
+        cp dist/bridge-zround.exe openstint-windows-x64/
+        cp dist/bridge-rcgtiming.exe openstint-windows-x64/
 
-    - name: Compute release tag
-      id: release_tag
-      shell: bash
-      run: |
-        BRANCH="${GITHUB_REF_NAME}"
-        TAG="nightly-${BRANCH}"
-        echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
-        echo "name=Nightly Windows Build (${BRANCH})" >> "$GITHUB_OUTPUT"
+    - name: Upload artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: openstint-windows-x64-${{ matrix.build_type }}
+        path: openstint-windows-x64/
+
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Download release ZIPs
+      uses: actions/download-artifact@v4
+      with:
+        pattern: openstint-windows-x64-*
+        merge-multiple: true
+        path: release-zips
 
     - name: Create or update release
       uses: softprops/action-gh-release@v1
       with:
-        tag_name: ${{ steps.release_tag.outputs.tag }}
-        name: ${{ steps.release_tag.outputs.name }}
+        tag_name: ${{ github.ref_name }}
+        name: ${{ github.ref_name }}
         body: |
           Automated build of OpenStint for Windows 64-bit
 
-          Branch: ${{ github.ref_name }}
           Built from commit ${{ github.sha }}
-
-          **Note:** This is an automated pre-release build.
-        files: openstint-windows-x64.zip
-        prerelease: true
+        files: release-zips/*.zip
+        prerelease: false
         draft: false
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,7 +1,6 @@
 #pragma once
 
 #include <cstdint>
-#include <cstdbool>
 #include <complex>
 #include <optional>
 #include <ostream>
@@ -69,15 +68,16 @@ class FrameDetector {
     static constexpr int samples_per_symbol = SAMPLES_PER_SYMBOL;
 
     // preamble matching
-    static inline const Preamble<uint16_t> p_openstint { transponder_props(TransponderProtocol::OpenStint).bpsk_preamble };
-    static inline const Preamble<uint16_t> p_rc3 { transponder_props(TransponderProtocol::RC3).bpsk_preamble };
-    static inline const Preamble<uint16_t> p_rc4 { transponder_props(TransponderProtocol::RC4).bpsk_preamble };
+    static inline const Preamble<uint16_t> p_openstint { transponder_props(TransponderProtocol::OpenStint).dpsk_preamble };
+    static inline const Preamble<uint16_t> p_rc3 { transponder_props(TransponderProtocol::RC3).dpsk_preamble };
+    static inline const Preamble<uint16_t> p_rc4 { transponder_props(TransponderProtocol::RC4).dpsk_preamble };
 
+    std::complex<int32_t> last_samples[samples_per_symbol] = {0};
     CircBuff<uint16_t> buffers[samples_per_symbol];
     float threshold;
 
     // stream statistics:
-    std::complex<int8_t> offset= {0, 0}; // dc offset ~ sample mean
+    std::complex<int32_t> offset= {0, 0}; // dc offset ~ sample mean
     std::complex<float> offset_hires = { 0.0f, 0.0f }; // dc offset
     float variance = 0; // ~noise power (expected value squared after dc offset removal)
     

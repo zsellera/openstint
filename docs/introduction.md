@@ -17,7 +17,10 @@ No wonder this is the technology of choice for practially every professional eve
 
 ## Technical details
 
+Parameters were chosen, so OpenStint decoder can offer compatibility with existing AMBRc/MyLaps transponders, without significant overhead.
+
 * 5 MHz carrier
 * BPSK at 1.25 million symbols per second
 * One transmission is 100-105 symbols (~80 us), the 24 bit payload protected by CRC8 and a convolutional code (K=9, r=1/2).
+* Transmit rate randomized bewteen 1..2 ms (mean 1.5 ms).
 * RTL-SDR supports 2.5 MSPS, HackRF One supports 2.5/5/10 MSPS.
