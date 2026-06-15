@@ -13,7 +13,8 @@ enum class TransponderProtocol {
 };
 
 struct TransponderProps {
-    uint16_t bpsk_preamble;
+    uint16_t dpsk_preamble;
+    uint16_t preamble;
     std::size_t payload_size;
     std::string_view prefix;
 };
@@ -23,9 +24,9 @@ int decode_openstint(const uint8_t *softbits, uint32_t *transponder_id);
 int decode_rc3(const uint8_t *softbits, uint32_t *transponder_id, uint8_t *status_code);
 
 inline constexpr TransponderProps TRANSPONDER_PROPERTIES[] = {
-    {0xf9a8, 80, "OPN"},
-    {0x51e4, 80, "RC3"},
-    {0x80cd, 100, "RC4"}
+    {0x857c, 0xf9a8, 80, "OPN"},
+    {0x7916, 0x51e4, 80, "RC3"},
+    {0xc0ab, 0x80cd, 100, "RC4"}
 };
 
 constexpr TransponderProps transponder_props(TransponderProtocol t) {
