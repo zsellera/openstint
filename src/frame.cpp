@@ -154,7 +154,7 @@ std::optional<TransponderProtocol> FrameDetector::process_baseband(const std::co
     }
     for (int i=0; i<samples_per_symbol; i++) {
         std::complex<int32_t> z = r[i] * std::conj(last_samples[i]);
-        int32_t zr = std::real(z) / 2;
+        int32_t zr = std::clamp(std::real(z), (int32_t)INT16_MIN, (int32_t)INT16_MAX);
         buffers[i].push(static_cast<int16_t>(zr), zr*zr);
     }
     for (int i=0; i<samples_per_symbol; i++) {

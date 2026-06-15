@@ -54,13 +54,13 @@ struct CircBuff {
     // store baseband signals:
     int16_t buff[bit_count] = {0};
     // also store baseband energy for t-statisctics
-    uint32_t buff_e[bit_count] = {0};
-    uint32_t window_energy = 0; // sum of all buff_e, buffered here
+    uint64_t buff_e[bit_count] = {0};
+    uint64_t window_energy = 0; // sum of all buff_e, buffered here
 
 public:
     void push(int16_t symbol, uint32_t symbol_energy) {
         // update window energy
-        window_energy += symbol_energy - buff_e[phase];
+        window_energy += static_cast<uint64_t>(symbol_energy) - buff_e[phase];
         buff_e[phase] = symbol_energy;
         // update circular buffer
         buff[phase] = symbol;
@@ -80,15 +80,17 @@ public:
             return 0.0f;
         }
 
-        // run matched filter on both baseband components:
-        int32_t dotprod = sync_word.dot(buff, phase);
+        // run matched filter against differential signal
+        // the /4 is an optimization, so dotprod fits to int32
+        // otherwise we'll divide c2 by 16
+        int32_t dotprod = sync_word.dot(buff, phase) / 4;
         
         // correlation result squared:
         int32_t c2 = dotprod * dotprod;
 
         // create a statistics that can predict how well
         // the pattern fits to the sample.
-        return static_cast<float>(c2) / (window_energy * 16);
+        return static_cast<float>(c2) / window_energy;
     }
 
     uint32_t energy() const { return window_energy; }

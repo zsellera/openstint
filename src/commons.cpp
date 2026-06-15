@@ -26,7 +26,7 @@ static zmq::socket_t* publisher = nullptr;
 
 static enum FrameParseMode { FRAME_SEEK, FRAME_WAIT, FRAME_FOUND } frame_parse_mode = FRAME_SEEK;
 static int pending_trail = 0; // symbols left to wait before the centered EQ window is full
-static FrameDetector frame_detector(0.7f);
+static FrameDetector frame_detector(0.72f);
 static SymbolReader symbol_reader;
 static Frame frame;
 static PassingDetector passing_detector;
