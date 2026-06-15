@@ -67,6 +67,12 @@ public:
         // inc phase
         phase = (phase + 1) % bit_count;
     }
+
+    void clear_next() {
+        window_energy -= buff_e[phase];
+        buff_e[phase] = 0;
+        buff[phase] = 0;
+    }
     
     float match_preamble(const Preamble<T> &sync_word) {
         // guard against divide-by-zero:

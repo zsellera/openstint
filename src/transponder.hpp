@@ -25,7 +25,7 @@ int decode_rc3(const uint8_t *softbits, uint32_t *transponder_id, uint8_t *statu
 
 inline constexpr TransponderProps TRANSPONDER_PROPERTIES[] = {
     {0x857c, 0xf9a8, 80, "OPN"},
-    {0xf916, 0x51e4, 80, "RC3"},
+    {0x7916, 0x51e4, 80, "RC3"},
     {0xc0ab, 0x80cd, 100, "RC4"}
 };
 

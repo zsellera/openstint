@@ -178,11 +178,17 @@ std::optional<TransponderProtocol> FrameDetector::process_baseband(const std::co
     if (buffers[idx].match_preamble(p_openstint) > threshold) {
         return TransponderProtocol::OpenStint;
     }
-    if (buffers[idx].match_preamble(p_rc3) > threshold) {
-        return TransponderProtocol::RC3;
-    }
     if (buffers[idx].match_preamble(p_rc4) > threshold) {       
         return TransponderProtocol::RC4;
+    }
+    // different manufacturers use different init sequence, DPSK first bit differs!
+    // - AmbRC/RCHG/MRT use 0xF916 dpsk preamble
+    // - RC4Hybrid use 0x7916
+    // depending on threshold, we could loose 25-50% of messages with the wrong preamble!
+    // fix: set msb to 0, sligthly lower threshold, match rc3 last to prevent early false-match
+    buffers[idx].clear_next(); // do not use MSB for matching
+    if (buffers[idx].match_preamble(p_rc3) > (threshold - 0.06f)) {
+        return TransponderProtocol::RC3;
     }
     return std::nullopt;
 }
