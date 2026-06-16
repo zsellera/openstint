@@ -60,6 +60,12 @@ export default defineConfig({
           { text: 'Replay capture', link: '/docs/replay-capture' },
           { text: 'Passing detection', link: '/docs/passing-detection' }
         ]
+      },
+      {
+        text: 'Developers',
+        items: [
+          { text: 'RX architecture', link: '/docs/dev-rx-architecture' }
+        ]
       }
     ],
 

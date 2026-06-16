@@ -4,6 +4,7 @@
 #include <complex>
 #include <optional>
 #include <ostream>
+#include <utility>
 #include <vector>
 
 #include "summing_buffer.hpp"
@@ -47,15 +48,11 @@ struct Frame {
     uint64_t timestamp; // steady time
     uint64_t timecode;  // sample counter
     
-    // preamble-data
-    // what is the optimal sampling point when reading
-    int symsync_sym = 0;
-    int symsync_bank = 0;
+    // based on preamble-data
     float symbol_scale = 0;
     float phase = 0;
-    float frequency = 0; // radian/symbol
-    std::complex<float> correction = {1.0f, 0.0f}; // phase & magnitude correction
-    
+    float phase_per_symbol = 0; // radian/symbol
+
     Frame();
     Frame(TransponderProtocol transponder_protocol, uint64_t timestamp, uint64_t timecode);
 
@@ -75,10 +72,14 @@ class FrameDetector {
     static inline const Preamble<uint16_t> p_rc3 { transponder_props(TransponderProtocol::RC3).dpsk_preamble };
     static inline const Preamble<uint16_t> p_rc4 { transponder_props(TransponderProtocol::RC4).dpsk_preamble };
 
-    std::complex<int32_t> last_samples[samples_per_symbol] = {0};
-    CircBuff<uint16_t> buffers[samples_per_symbol];
+    // preamble detection - dynamic threshold
+    const float threshold_low;
+    const float threshold_high;
     float threshold;
 
+    std::complex<int32_t> last_samples[samples_per_symbol] = {0};
+    CircBuff<uint16_t> buffers[samples_per_symbol];
+    
     // stream statistics:
     std::complex<int32_t> offset= {0, 0}; // dc offset ~ sample mean
     std::complex<float> offset_hires = { 0.0f, 0.0f }; // dc offset
@@ -89,7 +90,7 @@ class FrameDetector {
     uint32_t s2 = 0; // sum of sample squared
     int n = 0; // number of samples measured
 public:
-    FrameDetector(float threshold);
+    FrameDetector(float threshold_low, float threshold_high);
 
     std::optional<TransponderProtocol> process_baseband(const std::complex<int8_t> *samples);
     void update_statistics();
@@ -98,18 +99,26 @@ public:
     float symbol_energy() const;
     float noise_energy() const;
     std::complex<float> dc_offset() const;
+    float dynamic_threshold() const;
 };
 
 class SymbolReader {
 public:
     static constexpr int samples_per_symbol = SAMPLES_PER_SYMBOL;
-    static constexpr int filter_delay = 4;
-    static constexpr int num_filters = 16 / samples_per_symbol; // upsampling factor
+    static constexpr int fseq_halflen = 1;                       // symbols of past/future context
+    static constexpr int fseq_syms = 2 * fseq_halflen + 1;       // total filter span (symbols)
     static constexpr int preamble_length = 16;
-    static constexpr int reserve_buffer_size = preamble_length * samples_per_symbol;
+    // window = fseq_halflen lead + preamble + fseq_halflen trailing (future) symbols
+    static constexpr int preamble_symbol_count = preamble_length + 2 * fseq_halflen;
+    static constexpr int preamble_buffer_size = preamble_symbol_count * samples_per_symbol;
+    static constexpr int reserve_buffer_size = preamble_buffer_size;
+    
+    static constexpr float eq_mu_train = 0.05f * samples_per_symbol;
+    static constexpr float eq_mu_track = eq_mu_train * 2.0f;
+    static constexpr float costas_p = 0.020f;
+    static constexpr float costas_i = 0.002f;
 
 private:
-    firpfb_crcf sym_pfb; // preprocessing - polyphase filter bank
     eqlms_cccf sym_eq;   // equalizer, trained on preamble data
     modemcf bpsk_modem;
 
@@ -117,6 +126,11 @@ private:
     // the previous buffer. this contain the last section of
     // the previous buffer
     std::complex<int8_t> reserve_buffer[reserve_buffer_size];
+
+    // when a preamble is matched, copy received data here for further processing:
+    // - the centered EQ filter needs fseq_halflen lead + fseq_halflen trailing symbols
+    // - there is the preamble (16 symbols)
+    std::complex<float> preamble_buffer[preamble_buffer_size];
 
 public:
     SymbolReader();
@@ -127,14 +141,15 @@ public:
     SymbolReader& operator=(const SymbolReader&) = delete;
     SymbolReader& operator=(SymbolReader&&) noexcept = delete;
     
-    void read_preamble(Frame *dst, std::complex<float> offset, const std::complex<int8_t> *src, int end);
-    void read_symbol(Frame *dst, std::complex<float> offset, const std::complex<int8_t> *src);
+    void train_preamble(Frame *dst, const std::complex<int8_t> *src, int end, std::complex<float> dc_offset);
+    void read_preamble(Frame *dst, const std::complex<int8_t> *src, int end, std::complex<float> dc_offset);
+    void read_symbol(Frame *dst, const std::complex<int8_t> *src, std::complex<float> dc_offset);
     void update_reserve_buffer(const std::complex<int8_t> *src, int end);
     bool is_frame_complete(const Frame *f);
 
 private:
-    void read_single(Frame *dst, const std::complex<float> offset, const std::complex<int8_t> *src);
-    void read_preamble_symbol(std::complex<float> *dst, std::complex<float> symbol);
-    void train_preamble(Frame *dst, std::complex<float> offset, const std::complex<int8_t> *src, int end);
     void costas_tune_correction(Frame *frame, std::complex<float> symbol);
+    void load_preamble_buffer(const std::complex<int8_t> *src, int end, std::complex<float> dc_offset);
+    std::pair<float, float> estimate_phase_freq(Frame *frame, int shift = 2);
+    void train_fseq(Frame *frame, float mu);
 };

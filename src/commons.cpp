@@ -24,8 +24,9 @@ static int zmq_port = DEFAULT_ZEROMQ_PORT;
 static zmq::context_t* zmq_context = nullptr;
 static zmq::socket_t* publisher = nullptr;
 
-static enum FrameParseMode { FRAME_SEEK, FRAME_FOUND } frame_parse_mode = FRAME_SEEK;
-static FrameDetector frame_detector(0.7f);
+static enum FrameParseMode { FRAME_SEEK, FRAME_WAIT, FRAME_FOUND } frame_parse_mode = FRAME_SEEK;
+static int pending_trail = 0; // symbols left to wait before the centered EQ window is full
+static FrameDetector frame_detector(0.7f, 0.9f);
 static SymbolReader symbol_reader;
 static Frame frame;
 static PassingDetector passing_detector;
@@ -124,17 +125,29 @@ void detect_frames(const std::complex<int8_t>* samples, std::size_t sample_count
         if (frame_parse_mode == FRAME_SEEK) {
             const std::optional<TransponderProtocol> detected = frame_detector.process_baseband(samples+idx);
             if (detected) {
-                frame_parse_mode = FRAME_FOUND;
+                frame_parse_mode = FRAME_WAIT;
                 frame_detected = true; // do not use this buffer for noisefloor calculation
                 frame = Frame(
                     detected.value(),
                     timestamp + (idx * 1000000ul / SAMPLE_RATE),
                     timecode + idx
                 );
-                symbol_reader.read_preamble(&frame, frame_detector.dc_offset(), samples, idx+SAMPLES_PER_SYMBOL);
+                // defer training by fseq_halflen symbols: the centered EQ needs the
+                // trailing (future) symbols, which become ordinary past samples once
+                // they arrive. timing stays anchored at this detection point.
+                pending_trail = SymbolReader::fseq_halflen;
+            }
+        } else if (frame_parse_mode == FRAME_WAIT) {
+            // count the trailing symbols of the centered EQ window; once they are in,
+            // train/read the preamble looking both back (lead) and ahead (trailing).
+            if (--pending_trail == 0) {
+                const int end = idx + SAMPLES_PER_SYMBOL;
+                symbol_reader.train_preamble(&frame, samples, end, frame_detector.dc_offset());
+                symbol_reader.read_preamble(&frame, samples, end, frame_detector.dc_offset());
+                frame_parse_mode = FRAME_FOUND;
             }
         } else if (frame_parse_mode == FRAME_FOUND) {
-            symbol_reader.read_symbol(&frame, frame_detector.dc_offset(), samples+idx);
+            symbol_reader.read_symbol(&frame, samples+idx, frame_detector.dc_offset());
             if (symbol_reader.is_frame_complete(&frame)) {
                 frame_parse_mode = FRAME_SEEK;
                 bool frame_processed = process_frame(&frame);
@@ -153,13 +166,17 @@ void detect_frames(const std::complex<int8_t>* samples, std::size_t sample_count
 
     // update counters for noise energy and dc offset
     if (frame_detected) {
-        // there was an actice frame in the buffer, do not update
+        // there was an active frame in the buffer, do not update
         // statistics, as the received data messes with the
         // noise/dc-offset calculation
         frame_detector.reset_statistics_counters();
     } else {
         frame_detector.update_statistics();
-        rx_stats.save_channel_characteristics(frame_detector.dc_offset(), frame_detector.noise_energy());
+        rx_stats.save_channel_characteristics(
+            frame_detector.dc_offset(),
+            frame_detector.noise_energy(),
+            frame_detector.dynamic_threshold()
+        );
     }
 }
 
@@ -235,7 +252,7 @@ void report_detections() {
         publisher->send(zmq::buffer(report), zmq::send_flags::none);
     }
 
-    std::vector<Passing> passings = passing_detector.identify_passings(now_ts - 250000ul);
+    std::vector<Passing> passings = passing_detector.identify_passings(now_ts > 250000ul ? (now_ts-250000ul) : 0ul);
     for (const auto& passing : passings) {
         const std::string report = std::format("P {} {} {} {:.2f} {} {}",
             reporting_timestamp(passing.timestamp, now_ts, now_sysclk),
