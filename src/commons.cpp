@@ -26,7 +26,7 @@ static zmq::socket_t* publisher = nullptr;
 
 static enum FrameParseMode { FRAME_SEEK, FRAME_WAIT, FRAME_FOUND } frame_parse_mode = FRAME_SEEK;
 static int pending_trail = 0; // symbols left to wait before the centered EQ window is full
-static FrameDetector frame_detector(0.72f);
+static FrameDetector frame_detector(0.7f, 0.9f);
 static SymbolReader symbol_reader;
 static Frame frame;
 static PassingDetector passing_detector;
@@ -166,13 +166,17 @@ void detect_frames(const std::complex<int8_t>* samples, std::size_t sample_count
 
     // update counters for noise energy and dc offset
     if (frame_detected) {
-        // there was an actice frame in the buffer, do not update
+        // there was an active frame in the buffer, do not update
         // statistics, as the received data messes with the
         // noise/dc-offset calculation
         frame_detector.reset_statistics_counters();
     } else {
         frame_detector.update_statistics();
-        rx_stats.save_channel_characteristics(frame_detector.dc_offset(), frame_detector.noise_energy());
+        rx_stats.save_channel_characteristics(
+            frame_detector.dc_offset(),
+            frame_detector.noise_energy(),
+            frame_detector.dynamic_threshold()
+        );
     }
 }
 

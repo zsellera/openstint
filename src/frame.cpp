@@ -126,7 +126,7 @@ std::ostream& operator <<(std::ostream& os, const Frame& f) {
               << " SOFTBITS:[" << sbits.str() << "]";
 }
 
-FrameDetector::FrameDetector(float _threshold) : threshold(_threshold) {};
+FrameDetector::FrameDetector(float _low, float _high) : threshold_low(_low), threshold_high(_high), threshold(_low) {};
 
 std::optional<TransponderProtocol> FrameDetector::process_baseband(const std::complex<int8_t> *samples) {
     // Preamble detection works on differential-encoded signals;
@@ -186,7 +186,7 @@ std::optional<TransponderProtocol> FrameDetector::process_baseband(const std::co
     // depending on threshold, we could loose 25-50% of messages with the wrong preamble!
     // fix: set msb to 0, sligthly lower threshold, match rc3 last to prevent early false-match
     buffers[idx].clear_next(); // do not use MSB for matching
-    if (buffers[idx].match_preamble(p_rc3) > (threshold - 0.06f)) {
+    if (buffers[idx].match_preamble(p_rc3) > (threshold - 1.0f/64)) {
         return TransponderProtocol::RC3;
     }
     return std::nullopt;
@@ -197,6 +197,7 @@ void FrameDetector::update_statistics() {
         offset = complex_cast<int8_t>(s1 / n);
         offset_hires = complex_cast<float>(s1) / static_cast<float>(n);
         variance = static_cast<float>(s2) / (n - 1); // sample's variance (vs population variance)
+        threshold = threshold_low + (threshold_high - threshold_low) * std::clamp(variance / 64.0f, 0.0f, 1.0f);
         reset_statistics_counters();
     }
 }
@@ -224,6 +225,10 @@ float FrameDetector::noise_energy() const {
 
 std::complex<float> FrameDetector::dc_offset() const {
     return offset_hires;
+}
+
+float FrameDetector::dynamic_threshold() const {
+    return threshold;
 }
 
 SymbolReader::SymbolReader() {
