@@ -4,6 +4,11 @@ on:
   push:
     branches:
       - '**'
+    paths:
+      - 'src/**'
+      - '.github/workflows/ubuntu-build.yml'
+  # Allow manual deploys from the Actions tab.
+  workflow_dispatch:
 
 jobs:
   build:
