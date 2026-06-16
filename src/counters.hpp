@@ -16,14 +16,13 @@ class RxStatistics {
     uint32_t frames_processed = 0;
     std::complex<float> dc_offset = {0, 0};
     float noise_power = 0;
-    float dynamic_threshold = 0;
     uint64_t last_reset_timestamp = 0;
 
     std::mutex mutex;
 
 public:
     void register_frame(bool processed);
-    void save_channel_characteristics(std::complex<float> dc_offset, float noise_power, float dynamic_threshold);
+    void save_channel_characteristics(std::complex<float> dc_offset, float noise_power);
 
     void reset(uint64_t current_timestamp);
     bool reporting_due(uint64_t current_timestamp);

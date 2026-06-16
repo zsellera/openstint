@@ -72,9 +72,7 @@ class FrameDetector {
     static inline const Preamble<uint16_t> p_rc3 { transponder_props(TransponderProtocol::RC3).dpsk_preamble };
     static inline const Preamble<uint16_t> p_rc4 { transponder_props(TransponderProtocol::RC4).dpsk_preamble };
 
-    // preamble detection - dynamic threshold
-    const float threshold_low;
-    const float threshold_high;
+    // preamble detection
     float threshold;
 
     std::complex<int32_t> last_samples[samples_per_symbol] = {0};
@@ -90,7 +88,7 @@ class FrameDetector {
     uint32_t s2 = 0; // sum of sample squared
     int n = 0; // number of samples measured
 public:
-    FrameDetector(float threshold_low, float threshold_high);
+    FrameDetector(float threshold);
 
     std::optional<TransponderProtocol> process_baseband(const std::complex<int8_t> *samples);
     void update_statistics();
@@ -99,7 +97,6 @@ public:
     float symbol_energy() const;
     float noise_energy() const;
     std::complex<float> dc_offset() const;
-    float dynamic_threshold() const;
 };
 
 class SymbolReader {

@@ -126,7 +126,7 @@ std::ostream& operator <<(std::ostream& os, const Frame& f) {
               << " SOFTBITS:[" << sbits.str() << "]";
 }
 
-FrameDetector::FrameDetector(float _low, float _high) : threshold_low(_low), threshold_high(_high), threshold(_low) {};
+FrameDetector::FrameDetector(float _th) : threshold(_th) {};
 
 std::optional<TransponderProtocol> FrameDetector::process_baseband(const std::complex<int8_t> *samples) {
     // Preamble detection works on differential-encoded signals;
@@ -197,7 +197,6 @@ void FrameDetector::update_statistics() {
         offset = complex_cast<int8_t>(s1 / n);
         offset_hires = complex_cast<float>(s1) / static_cast<float>(n);
         variance = static_cast<float>(s2) / (n - 1); // sample's variance (vs population variance)
-        threshold = threshold_low + (threshold_high - threshold_low) * std::clamp(variance / 64.0f, 0.0f, 1.0f);
         reset_statistics_counters();
     }
 }
@@ -225,10 +224,6 @@ float FrameDetector::noise_energy() const {
 
 std::complex<float> FrameDetector::dc_offset() const {
     return offset_hires;
-}
-
-float FrameDetector::dynamic_threshold() const {
-    return threshold;
 }
 
 SymbolReader::SymbolReader() {

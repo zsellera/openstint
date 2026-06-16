@@ -14,12 +14,11 @@ void RxStatistics::register_frame(bool processed) {
     if (processed) { frames_processed++; }
 }
 
-void RxStatistics::save_channel_characteristics(std::complex<float> _dc_offset, float _noise_power, float _dynamic_threshold) {
+void RxStatistics::save_channel_characteristics(std::complex<float> _dc_offset, float _noise_power) {
     std::lock_guard<std::mutex> lock(mutex);
 
     dc_offset = _dc_offset;
     noise_power = _noise_power;
-    dynamic_threshold = _dynamic_threshold;
 }
 
 void RxStatistics::reset(uint64_t current_timestamp) {
@@ -42,12 +41,11 @@ std::string RxStatistics::to_string() {
     
     std::string temp;
     std::format_to(
-        std::back_inserter(temp), "{:.2f} {:.2f} {} {} {:.4f}",
+        std::back_inserter(temp), "{:.2f} {:.2f} {} {}",
         noise_floor, 
         std::abs(dc_offset), 
         frames_received,
-        frames_processed,
-        dynamic_threshold
+        frames_processed
     );
     return temp;
 }
