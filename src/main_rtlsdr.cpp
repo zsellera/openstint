@@ -20,6 +20,7 @@
 static rtlsdr_dev_t* device = nullptr;
 static std::atomic<bool> do_exit(false);
 static std::atomic<bool> streaming(false);
+static std::atomic<int64_t> last_rx_ms(0);  // lost radio detection
 
 static const uint64_t CENTER_FREQ_HZ       = 5000000ULL;
 static const int DEFAULT_GAIN_TENTHS_DB    = 200;           // dB
@@ -44,6 +45,10 @@ void rx_callback(unsigned char* buf, uint32_t len, void* /*ctx*/) {
     if (do_exit) {
         return;
     }
+
+    // lost/frozen radio detection:
+    last_rx_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+        std::chrono::steady_clock::now().time_since_epoch()).count();
 
     uint32_t sample_count = len / 2;
 
@@ -232,6 +237,9 @@ int main(int argc, char** argv) {
     // start async reading in a background thread
     {
         streaming = true;
+        last_rx_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+            std::chrono::steady_clock::now().time_since_epoch()).count();
+        
         std::thread rx_thread([]() {
             int r = rtlsdr_read_async(device, rx_callback, nullptr, 12, 32768);
             if (r != 0) {
@@ -246,6 +254,15 @@ int main(int argc, char** argv) {
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
             report_detections();
+
+            // watchdog: rtlsdr_read_async() may stall silently if the device
+            // is unplugged, so bail out if no samples arrive for a while
+            int64_t now_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
+                std::chrono::steady_clock::now().time_since_epoch()).count();
+            if (now_ms - last_rx_ms > 2000) {
+                std::fprintf(stderr, "No samples for 2s — device lost?\n");
+                do_exit = true;
+            }
         }
 
         // ensure async reading is cancelled
