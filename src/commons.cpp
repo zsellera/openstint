@@ -26,7 +26,7 @@ static zmq::socket_t* publisher = nullptr;
 
 static enum FrameParseMode { FRAME_SEEK, FRAME_WAIT, FRAME_FOUND } frame_parse_mode = FRAME_SEEK;
 static int pending_trail = 0; // symbols left to wait before the centered EQ window is full
-static FrameDetector frame_detector(0.68f);
+static FrameDetector frame_detector;
 static SymbolReader symbol_reader;
 static Frame frame;
 static PassingDetector passing_detector;
@@ -123,12 +123,13 @@ void detect_frames(const std::complex<int8_t>* samples, std::size_t sample_count
     bool frame_detected = false;
     for (uint32_t idx=0; (idx+SAMPLES_PER_SYMBOL)<=sample_count; idx+=SAMPLES_PER_SYMBOL) {
         if (frame_parse_mode == FRAME_SEEK) {
-            const std::optional<TransponderProtocol> detected = frame_detector.process_baseband(samples+idx);
+            const std::optional<DetectionResult> detected = frame_detector.process_baseband(samples+idx);
             if (detected) {
                 frame_parse_mode = FRAME_WAIT;
                 frame_detected = true; // do not use this buffer for noisefloor calculation
                 frame = Frame(
-                    detected.value(),
+                    detected.value().first,
+                    detected.value().second,
                     timestamp + (idx * 1000000ul / SAMPLE_RATE),
                     timecode + idx
                 );

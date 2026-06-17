@@ -28,10 +28,16 @@
 #define SAMPLE_RATE (SYMBOL_RATE * SAMPLES_PER_SYMBOL)
 #endif
 
+// result of a preamble detection: matched protocol + its match metric
+using DetectionResult = std::pair<TransponderProtocol, float>;
+
 struct Frame {
     TransponderProtocol transponder_protocol; // what kind of preamble was matched
     uint32_t preamble_size;
     uint32_t payload_size;
+
+    // match quality - the metric that was used to match this frame
+    float preamble_metric;
 
     // bitstream decision probabilities for soft-decoding
     // 0..127..255 <=> totally 0 ... unknown ... totally 1
@@ -54,7 +60,7 @@ struct Frame {
     float phase_per_symbol = 0; // radian/symbol
 
     Frame();
-    Frame(TransponderProtocol transponder_protocol, uint64_t timestamp, uint64_t timecode);
+    Frame(TransponderProtocol transponder_protocol, float preamble_metric, uint64_t timestamp, uint64_t timecode);
 
     const uint8_t* bits();
     float rssi() const;
@@ -66,14 +72,6 @@ std::ostream& operator <<(std::ostream& os, const Frame& f);
 
 class FrameDetector {
     static constexpr int samples_per_symbol = SAMPLES_PER_SYMBOL;
-
-    // preamble matching
-    static inline const Preamble<uint16_t> p_openstint { transponder_props(TransponderProtocol::OpenStint).dpsk_preamble };
-    static inline const Preamble<uint16_t> p_rc3 { transponder_props(TransponderProtocol::RC3).dpsk_preamble };
-    static inline const Preamble<uint16_t> p_rc4 { transponder_props(TransponderProtocol::RC4).dpsk_preamble };
-
-    // preamble detection
-    float threshold;
 
     std::complex<int32_t> last_samples[samples_per_symbol] = {0};
     CircBuff<uint16_t> buffers[samples_per_symbol];
@@ -88,9 +86,7 @@ class FrameDetector {
     uint32_t s2 = 0; // sum of sample squared
     int n = 0; // number of samples measured
 public:
-    FrameDetector(float threshold);
-
-    std::optional<TransponderProtocol> process_baseband(const std::complex<int8_t> *samples);
+    std::optional<DetectionResult> process_baseband(const std::complex<int8_t> *samples);
     void update_statistics();
     void reset_statistics_counters();
 

@@ -13,7 +13,15 @@
 #define FRAME_MAX_SYMBOL_SPACE 128
 #define PREAMBLE_MAX_BIT_ERRORS 2
 #define STATS_UPDATE_THRESHOLD (1<<12)
-#define EQLMS_TRAINING_THRESHOLD 16.0f
+
+#define PREAMBLE_THRESHOLD 0.78f
+#define PREAMBLE_15BIT_PENALTY (15.0f/16.0f)
+
+// preamble matching
+static inline const Preamble<uint16_t> p_openstint(transponder_props(TransponderProtocol::OpenStint).dpsk_preamble, PREAMBLE_THRESHOLD*PREAMBLE_15BIT_PENALTY);
+static inline const Preamble<uint16_t> p_rc3(transponder_props(TransponderProtocol::RC3).dpsk_preamble, PREAMBLE_THRESHOLD*PREAMBLE_15BIT_PENALTY);
+static inline const Preamble<uint16_t> p_rc4(transponder_props(TransponderProtocol::RC4).dpsk_preamble, PREAMBLE_THRESHOLD);
+
 
 Frame::Frame() {
     preamble_size = payload_size = 0;
@@ -21,10 +29,11 @@ Frame::Frame() {
     symbols.reserve(FRAME_MAX_SYMBOL_SPACE);
     timestamp = 0;
     timecode = 0;
+    preamble_metric = 0;
 }
 
-Frame::Frame(TransponderProtocol _ttype, uint64_t _ts, uint64_t _tc)
-    : transponder_protocol(_ttype), timestamp(_ts), timecode(_tc) {
+Frame::Frame(TransponderProtocol _ttype, float _pm, uint64_t _ts, uint64_t _tc)
+    : transponder_protocol(_ttype), preamble_metric(_pm), timestamp(_ts), timecode(_tc) {
     softbits.reserve(FRAME_MAX_SYMBOL_SPACE);
     symbols.reserve(FRAME_MAX_SYMBOL_SPACE);
     payload_size = transponder_props(transponder_protocol).payload_size;
@@ -118,6 +127,7 @@ std::ostream& operator <<(std::ostream& os, const Frame& f) {
     return os << transponder_props(f.transponder_protocol).prefix
               << " TS:" << (f.timestamp/1000)
               << " TC:" << f.timecode
+              << " M:" << f.preamble_metric
               << " RSSI:" << f.rssi()
               << " EVM:" << f.evm()
               << " FREQ:" << (f.phase_per_symbol / (2.0f * 3.14) * 1250000.0f)
@@ -126,9 +136,7 @@ std::ostream& operator <<(std::ostream& os, const Frame& f) {
               << " SOFTBITS:[" << sbits.str() << "]";
 }
 
-FrameDetector::FrameDetector(float _th) : threshold(_th) {};
-
-std::optional<TransponderProtocol> FrameDetector::process_baseband(const std::complex<int8_t> *samples) {
+std::optional<DetectionResult> FrameDetector::process_baseband(const std::complex<int8_t> *samples) {
     // Preamble detection works on differential-encoded signals;
     // This is tolerant to larger frequency offsets.
     // 
@@ -172,22 +180,27 @@ std::optional<TransponderProtocol> FrameDetector::process_baseband(const std::co
     s1 += samples[0];
     s2 += std::norm(r[0]);
     n++;
+    
+    if (buffers[idx].match_preamble(p_rc4)) {       
+        return {{ TransponderProtocol::RC4, buffers[idx].calc_metric(p_rc4) }};
+    }
 
-    // run matchers
-    if (buffers[idx].match_preamble(p_openstint) > threshold) {
-        return TransponderProtocol::OpenStint;
-    }
-    if (buffers[idx].match_preamble(p_rc4) > threshold) {       
-        return TransponderProtocol::RC4;
-    }
     // different manufacturers use different init sequence, DPSK first bit differs!
-    // - AmbRC/RCHG/MRT use 0xF916 dpsk preamble
-    // - RC4Hybrid use 0x7916
     // depending on threshold, we could loose 25-50% of messages with the wrong preamble!
     // fix: set msb to 0, sligthly lower threshold, match rc3 last to prevent early false-match
     buffers[idx].clear_next(); // do not use MSB for matching
-    if (buffers[idx].match_preamble(p_rc3) > (threshold - 1.0f/64)) {
-        return TransponderProtocol::RC3;
+
+    // v1 transponder use the correct init sequence (-1 -1 -1 -1)
+    // v2-beta used incorrect; to keep those tranponders alive, match on 15 bits only
+    // new transpoders are fixed, this affects ~5 team/people
+    if (buffers[idx].match_preamble(p_openstint)) {
+        return {{ TransponderProtocol::OpenStint, buffers[idx].calc_metric(p_openstint) }};
+    }
+
+    // - AmbRC/RCHG/MRT use 0xF916 dpsk preamble
+    // - RC4Hybrid use 0x7916
+    if (buffers[idx].match_preamble(p_rc3)) {
+        return {{ TransponderProtocol::RC3, buffers[idx].calc_metric(p_rc3) }};
     }
     return std::nullopt;
 }
@@ -266,16 +279,7 @@ void SymbolReader::train_preamble(Frame *frame, const std::complex<int8_t> *src,
     }
     
     // train EQ filter
-    // std::complex<float> eq_weights[fseq_syms * samples_per_symbol];
-    // eqlms_cccf_copy_coefficients(sym_eq, eq_weights);
-    // std::cout << "eq2";
-    // for (unsigned int i=0; i<eqlms_cccf_get_length(sym_eq); i++) {
-    //     std::cout << " " << eq_weights[i];
-    // }
-    // std::cout << std::endl;
-
     eqlms_cccf_reset(sym_eq); // reset the original parameters
-
     train_fseq(frame, eq_mu_train*3.0f);
     train_fseq(frame, eq_mu_train);
     train_fseq(frame, eq_mu_train);
