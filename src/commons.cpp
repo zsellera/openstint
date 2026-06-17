@@ -130,7 +130,7 @@ void detect_frames(const std::complex<int8_t>* samples, std::size_t sample_count
                 frame = Frame(
                     detected.value().first,
                     detected.value().second,
-                    timestamp + (idx * 1000000ul / SAMPLE_RATE),
+                    timestamp + (static_cast<uint64_t>(idx) * 1000000ull / SAMPLE_RATE), // "UL" on windows is 4 bytes :o
                     timecode + idx
                 );
                 // defer training by fseq_halflen symbols: the centered EQ needs the

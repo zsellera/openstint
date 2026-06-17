@@ -18,7 +18,7 @@ static const std::vector<float> smoothing_fir = {
 };
 
 uint64_t timecode_to_usec(uint64_t timecode) {
-    return timecode * 1000000ul / SAMPLE_RATE;
+    return timecode * 1000000ull / SAMPLE_RATE;
 }
 
 TransponderSystem transponder_system(TransponderProtocol ttype) {
