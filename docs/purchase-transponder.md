@@ -8,9 +8,7 @@ You can manufacture them at [JLCPCB](https://jlcpcb.com), a popular Chinese fabh
 
 ## Known sellers
 
-Being an open source project, anyone can sell them. AFAIK no one is doing that yet.
-
-For a small amounts, ask around at [rctech forum](https://rctech.net/forum/radio-electronics/1137693-openstint-laptiming-decoder.html). If you need larger quantities, go to JLCPCB.
+Being an open source project, anyone can sell them. For a small amounts, ask around at [rctech forum](https://rctech.net/forum/radio-electronics/1137693-openstint-laptiming-decoder.html). If you need larger quantities, go to JLCPCB.
 
 * *Attila Zseller* - zsellera@gmail.com - EU only, as untracked mail; assembled, pre-programmed panels. €30/panel + €5 shipping; 2 panels max.
 
