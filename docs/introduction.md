@@ -6,6 +6,8 @@ OpenStint is a lap timing solution for radio-controlled car and boat racing. It 
 * Decoding the signal happens on a computer (software-defined radio).
 * A radio unit (HackRF One / RTL-SDR) downconverts and digitizes the signal for the computer.
 
+![OpenStint DIY laptiming loop at SzadaRing](introduction.jpg)
+
 While there are many alternative technologies, this one is probably the most fitting for motorsport application:
 * Reliable in practically any conditions (dirt, rain, indoor & outdoor).
 * The near-field signal strength decays with the distance-cubed (R<sup>3</sup>): measures a sigle lane, adjacent or nearby lanes do not create false passings.
