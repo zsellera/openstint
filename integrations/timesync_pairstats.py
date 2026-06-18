@@ -20,7 +20,8 @@ For a pair (a, b) with a earlier than b:
 error_ms is "how much more time the decoder clock measured than the transponder
 clock" over that interval. Pairs are bucketed by round(decoder_delta_ms / 1000)
 when that rounds to a power of two (1, 2, 4, ... s), and each bucket reports
-count / average / std dev / median / min / max / 90% spread of error_ms.
+count / average / std dev / median / min / max / +-68/95/99.7% spread of
+error_ms.
 
 How to read it: the AVERAGE error in a bucket grows linearly with the gap and
 reveals the clock's frequency offset (avg_ms / gap_s = -ppm/1000); the STD DEV
@@ -112,12 +113,18 @@ def update_buckets(new_ms, new_tc, recent_ms, recent_tc, bucket_errors):
 
 
 def bucket_stats(errors):
-    """count / mean / std / median / min / max / 90% spread of an error list."""
+    """count / mean / std / median / min / max / ±68/95/99.7% spread."""
     errors = np.asarray(errors, dtype=np.float64)
     n = len(errors)
-    # single-sided 90% spread: half the central P5..P95 width, reported as +/-.
-    spread90 = ((np.percentile(errors, 95) - np.percentile(errors, 5)) / 2.0
-                if n >= 2 else 0.0)
+
+    def half_spread(pct):
+        # single-sided half-width of the central pct interval, reported as +/-.
+        if n < 2:
+            return 0.0
+        lo = (100.0 - pct) / 2.0
+        hi = 100.0 - lo
+        return (np.percentile(errors, hi) - np.percentile(errors, lo)) / 2.0
+
     return {
         "count": n,
         "mean": float(np.mean(errors)),
@@ -125,13 +132,15 @@ def bucket_stats(errors):
         "median": float(np.median(errors)),
         "min": float(np.min(errors)),
         "max": float(np.max(errors)),
-        "spread90": float(spread90),
+        "spread68": float(half_spread(68.0)),
+        "spread95": float(half_spread(95.0)),
+        "spread997": float(half_spread(99.7)),
     }
 
 
 def format_report(locked_id, messages_count, bucket_errors, status=None):
     lines = []
-    bar = "=" * 86
+    bar = "=" * 100
     lines.append(bar)
     lines.append(
         f"timesync pair-stats  transponder {locked_id}  |  "
@@ -144,8 +153,9 @@ def format_report(locked_id, messages_count, bucket_errors, status=None):
         lines.append(bar)
         return "\n".join(lines)
 
-    header = (f"  {'gap[s]':>6} {'count':>7} {'mean':>9} {'stdev':>9} "
-              f"{'median':>9} {'min':>9} {'max':>9} {'90%spread':>11}")
+    header = (f"  {'gap[s]':>6} {'count':>7} {'mean':>9} {'stdev':>8} "
+              f"{'median':>8} {'min':>8} {'max':>8} "
+              f"{'±68%':>9} {'±95%':>9} {'±99.7%':>9}")
     lines.append(header)
     lines.append("  " + "-" * (len(header) - 2))
     for p in BUCKETS:
@@ -153,79 +163,99 @@ def format_report(locked_id, messages_count, bucket_errors, status=None):
             continue
         s = bucket_stats(bucket_errors[p])
         flag = "  (low n)" if s["count"] < 10 else ""
-        spread = f"±{s['spread90']:.3f}"
         lines.append(
-            f"  {p:>6} {s['count']:>7} {s['mean']:>9.3f} {s['std']:>9.3f} "
-            f"{s['median']:>9.3f} {s['min']:>9.3f} {s['max']:>9.3f} "
-            f"{spread:>11}{flag}"
+            f"  {p:>6} {s['count']:>7} {s['mean']:>9.3f} {s['std']:>8.3f} "
+            f"{s['median']:>8.3f} {s['min']:>8.3f} {s['max']:>8.3f} "
+            f"{('±' + format(s['spread68'], '.3f')):>9} "
+            f"{('±' + format(s['spread95'], '.3f')):>9} "
+            f"{('±' + format(s['spread997'], '.3f')):>9}{flag}"
         )
-    lines.append("  (all error values in ms; error = decoder_elapsed - "
-                 "transponder_elapsed)")
+    lines.append("  (error values in ms; error = decoder_elapsed - transponder_elapsed)")
     lines.append(bar)
     return "\n".join(lines)
 
 
-def save_adev_chart(locked_id, bucket_errors):
-    """On exit, plot an ADEV-like log-log curve from the per-bucket stddev.
+def save_stability_chart(locked_id, bucket_errors):
+    """On exit, plot per-bucket frequency-stability curves (log-log).
 
-    Allan-deviation analogue per bucket: the timing-error stddev (a time, in s)
-    divided by the gap (a time, in s) is the dimensionless fractional-frequency
-    deviation -- adev ~ (stddev_ms / 1000) / gap_s. Falls as 1/tau while jitter-
-    limited, bottoms at the stability floor, rises again under drift.
+    All three are dimensionless fractional-frequency quantities sharing one axis
+    (x 1e6 = ppm):
+      * stddev/tau  -- the random part. Falls as 1/tau while jitter-limited,
+        bottoms out, then rises again under noise/drift.
+      * |mean|/tau  -- the systematic frequency offset. Flat = constant offset;
+        a rising slope means the offset itself drifts over the gap.
+      * RMS fractional frequency = sqrt(mean^2 + stddev^2)/tau -- the total
+        per-sync error budget (random and systematic combined in quadrature).
+    Where |mean|/tau overtakes stddev/tau, systematic drift dominates -- that gap
+    is your practical re-sync horizon. NB: none of these is the Allan deviation
+    (that needs the neighbour-difference estimator), so the file is not named so.
     """
     points = []
     for p in BUCKETS:
         errs = bucket_errors.get(p)
         if errs and len(errs) >= 2:
-            std_ms = float(np.std(np.asarray(errs, dtype=np.float64), ddof=1))
-            adev = (std_ms / 1000.0) / p
-            points.append((p, adev, std_ms, len(errs)))
+            arr = np.asarray(errs, dtype=np.float64)
+            std_ms = float(np.std(arr, ddof=1))
+            mean_ms = float(np.mean(arr))
+            rand = (std_ms / 1000.0) / p                 # random, fractional
+            offset = abs(mean_ms / 1000.0) / p           # systematic, fractional
+            rms = (math.hypot(mean_ms, std_ms) / 1000.0) / p   # total, fractional
+            points.append((p, rand, offset, rms, std_ms, mean_ms, len(errs)))
     if len(points) < 2:
-        print("Not enough buckets to plot an ADEV chart.")
+        print("Not enough buckets to plot a stability chart.")
         return
 
-    tau = [p for p, _, _, _ in points]
-    adev = [a for _, a, _, _ in points]
+    tau = [p for p, *_ in points]
+    rand = [r for _, r, _, _, _, _, _ in points]
+    offset = [o for _, _, o, _, _, _, _ in points]
+    rms = [q for _, _, _, q, _, _, _ in points]
+    # sign of the offset (clock fast -> error negative -> clock runs ahead),
+    # taken from the longest-gap bucket where it is most reliable.
+    sign = "fast" if points[-1][5] < 0 else "slow"
+    off_ppm = offset[-1] * 1e6
 
     try:
         import matplotlib
         matplotlib.use("Agg")
         import matplotlib.pyplot as plt
     except ImportError:
-        print("matplotlib not available; ADEV-like data (tau[s], adev, "
-              "stddev[ms], count):")
-        for p, a, s, n in points:
-            print(f"  {p:>6}  {a:.3e}  {s:9.3f}  {n}")
+        print("matplotlib not available; data (tau[s], stddev/tau, |mean|/tau, "
+              "RMS/tau, stddev[ms], mean[ms], count):")
+        for p, r, o, q, s, m, n in points:
+            print(f"  {p:>6}  {r:.3e}  {o:.3e}  {q:.3e}  {s:9.3f}  {m:9.3f}  {n}")
         return
 
     fig, ax = plt.subplots(figsize=(8, 6))
-    ax.loglog(tau, adev, "o-", color="#1f77b4", lw=1.8, ms=7,
-              label=f"stddev/tau (transponder {locked_id})")
+    ax.loglog(tau, rms, "^-", color="#2ca02c", lw=2.0, ms=7,
+              label=r"RMS fractional frequency:  $\sqrt{mean^2+stddev^2}/\tau$")
+    ax.loglog(tau, rand, "o-", color="#1f77b4", lw=1.8, ms=7,
+              label="random:  stddev / tau")
+    ax.loglog(tau, offset, "s-", color="#d62728", lw=1.8, ms=7,
+              label=f"systematic:  |mean| / tau  (clock {sign})")
 
     # tau^-1 reference (phase noise / jitter), anchored to the first point
-    import numpy as _np
-    tref = _np.array([tau[0], tau[min(len(tau) - 1, 5)]], dtype=float)
-    ax.loglog(tref, adev[0] * (tref / tau[0]) ** -1.0, "--", color="gray",
+    tref = np.array([tau[0], tau[min(len(tau) - 1, 5)]], dtype=float)
+    ax.loglog(tref, rand[0] * (tref / tau[0]) ** -1.0, "--", color="gray",
               lw=1, label=r"$\tau^{-1}$ (jitter)")
 
-    # mark the floor (minimum)
-    imin = int(_np.argmin(adev))
-    ax.scatter([tau[imin]], [adev[imin]], s=140, facecolors="none",
-               edgecolors="green", lw=2, zorder=5,
-               label=f"floor {adev[imin]:.2e} @ {tau[imin]} s")
+    # right axis in ppm (same quantity x 1e6)
+    secax = ax.secondary_yaxis(
+        "right", functions=(lambda y: y * 1e6, lambda y: y / 1e6))
+    secax.set_ylabel("ppm")
 
     ax.set_xlabel("gap  tau  [s]")
-    ax.set_ylabel("ADEV-like  =  stddev / tau  (dimensionless)")
-    ax.set_title(f"timesync stability - transponder {locked_id} (log-log)")
+    ax.set_ylabel("fractional frequency deviation")
+    ax.set_title(f"timesync stability - transponder {locked_id} "
+                 f"(offset {off_ppm:.1f} ppm {sign}, log-log)")
     ax.grid(True, which="both", ls=":", alpha=0.5)
     ax.legend(fontsize=9)
     fig.tight_layout()
 
-    fname = f"adev_{locked_id}_{int(time.time())}.png"
+    fname = f"freq_stability_{locked_id}_{int(time.time())}.png"
     path = os.path.abspath(fname)
     fig.savefig(path, dpi=130)
     plt.close(fig)
-    print(f"ADEV chart saved to {path}")
+    print(f"stability chart saved to {path}")
 
 
 def main():
@@ -333,7 +363,7 @@ def main():
         context.term()
         print("Stopped.")
         if locked_id is not None:
-            save_adev_chart(locked_id, bucket_errors)
+            save_stability_chart(locked_id, bucket_errors)
 
 
 if __name__ == "__main__":

@@ -55,6 +55,6 @@ Using OpenStint is this easy:
 
 ### Lap counting and scoring
 
-I develop [LapBeeps](scoring-lapbeeps.md), it support OpenStint natively.
+I develop [LapBeeps](scoring-lapbeeps.md), it supports OpenStint natively.
 
 There is a bridge for [ZRound](https://www.zround.com/index.php/download-mananger/) and [RCGTiming](https://rcgtiming.com/), translating OpenStint's protocol to their native ones. These are packaged with the project in its .zip file.
