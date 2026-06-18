@@ -58,7 +58,8 @@ export default defineConfig({
         items: [
           { text: 'RC4 learning', link: '/docs/rc4' },
           { text: 'Replay capture', link: '/docs/replay-capture' },
-          { text: 'Passing detection', link: '/docs/passing-detection' }
+          { text: 'Passing detection', link: '/docs/passing-detection' },
+          { text: 'Timing accuracy', link: '/docs/timing-accuracy' }
         ]
       },
       {
