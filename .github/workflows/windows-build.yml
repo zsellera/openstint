@@ -62,6 +62,7 @@ jobs:
         mkdir build
         cd build
         cmake -G Ninja -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} ^
+          -DCMAKE_POLICY_VERSION_MINIMUM=3.5 ^
           -DCMAKE_C_FLAGS="/W3 /EHsc" ^
           -DCMAKE_INSTALL_PREFIX="${{ env.DEPS_DIR }}\libfec" ..
         ninja fec
@@ -94,6 +95,8 @@ jobs:
         mkdir build
         cd build
         cmake -G Ninja -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} ^
+          -DLIBUSB_INCLUDE_DIR="C:\vcpkg\installed\x64-windows\include\libusb-1.0" ^
+          -DLIBUSB_LIBRARIES="C:\vcpkg\installed\x64-windows\lib\libusb-1.0.lib" ^
           -DCMAKE_PREFIX_PATH="C:\vcpkg\installed\x64-windows" ^
           -DCMAKE_INSTALL_PREFIX="${{ env.DEPS_DIR }}\hackrf" ..
         ninja
