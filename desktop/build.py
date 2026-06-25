@@ -22,6 +22,12 @@ datas = []
 for f in so_files:
     datas.extend(["--add-binary", f"{f}{os.pathsep}."])
 
+# Bundle native DLLs that the openstint module depends on
+deps_dir = os.environ.get("DEPS_DIR", "")
+if deps_dir:
+    for dll in glob.glob(os.path.join(deps_dir, "**", "*.dll"), recursive=True):
+        datas.extend(["--add-binary", f"{dll}{os.pathsep}."])
+
 cmd = [
     sys.executable, "-m", "PyInstaller",
     "--onefile",

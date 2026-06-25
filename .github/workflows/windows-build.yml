@@ -15,86 +15,105 @@ jobs:
 
     strategy:
       matrix:
-        build_type: [Release, Debug]
+        build_type: [Release]
+
+    env:
+      VCPKG_DEFAULT_TRIPLET: x64-windows
+      DEPS_DIR: ${{ github.workspace }}/deps
 
     steps:
     - name: Checkout code
       uses: actions/checkout@v4
-
-    - name: Setup MSYS2
-      uses: msys2/setup-msys2@v2
-      with:
-        msystem: MINGW64
-        update: true
-        cache: true
-        install: >-
-          mingw-w64-x86_64-toolchain
-          mingw-w64-x86_64-cmake
-          mingw-w64-x86_64-ninja
-          mingw-w64-x86_64-zeromq
-          mingw-w64-x86_64-cppzmq
-          mingw-w64-x86_64-hackrf
-          mingw-w64-x86_64-rtl-sdr
-          mingw-w64-x86_64-python
-          mingw-w64-x86_64-python-pip
-          mingw-w64-x86_64-pybind11
-          mingw-w64-x86_64-python-numpy
-          mingw-w64-x86_64-python-pillow
-          mingw-w64-x86_64-tk
-          git
-          make
-          autoconf
-          automake
-          libtool
-          pkg-config
-          zip
-
-    - name: Build and install libfec
-      shell: msys2 {0}
-      run: |
-        git clone https://github.com/quiet/libfec.git
-        cd libfec
-        ./configure --prefix=/mingw64
-        # Fix MinGW build: remove -lc flag and use .dll.a extension for shared library
-        sed -i 's/-lc$//' Makefile
-        sed -i 's/libfec\.so/libfec.dll/' Makefile
-        make
-        mkdir -p /mingw64/lib
-        cp libfec.dll libfec.a /mingw64/lib
-        cp fec.h /mingw64/include
-        cd ..
-
-    - name: Build and install liquid-dsp
-      shell: msys2 {0}
-      run: |
-        mkdir -p /mingw64/include/liquid
-        curl --output /mingw64/include/liquid/liquid.h https://raw.githubusercontent.com/cjcliffe/CubicSDR/refs/heads/master/external/liquid-dsp/include/liquid/liquid.h
-        curl --output /mingw64/bin/libliquid.a https://raw.githubusercontent.com/cjcliffe/CubicSDR/refs/heads/master/external/liquid-dsp/gcc/64/libliquid.a
-        curl --output /mingw64/bin/libliquid.dll https://raw.githubusercontent.com/cjcliffe/CubicSDR/refs/heads/master/external/liquid-dsp/gcc/64/libliquid.dll
 
     - name: Setup Python
       uses: actions/setup-python@v5
       with:
         python-version: '3.12'
 
-    - name: Install pybind11
+    - name: Install Python packages
       run: pip install pybind11
 
-    - name: Build OpenStint
-      shell: msys2 {0}
+    - name: Setup MSVC environment
+      uses: ilammy/msvc-dev-cmd@v1
+      with:
+        arch: x64
+
+    - name: Install vcpkg dependencies
       run: |
-        mkdir build
-        cd build
-        PYTHON_EXE=$(ls /c/hostedtoolcache/windows/Python/3.12.*/x64/python.exe 2>/dev/null | head -1)
-        if [ -n "$PYTHON_EXE" ]; then
-          PYBIND11_DIR=$("$PYTHON_EXE" -c "import pybind11; print(pybind11.get_cmake_dir())" | tr '\\' '/')
-          cmake -G "Ninja" -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} -DUSE_PYTHON=ON \
-            -DPython_EXECUTABLE="$PYTHON_EXE" \
-            -Dpybind11_DIR="$PYBIND11_DIR" ..
-        else
-          cmake -G "Ninja" -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} ..
-        fi
+        vcpkg install zeromq cppzmq libusb pthreads --triplet x64-windows
+      env:
+        VCPKG_ROOT: C:\vcpkg
+
+    - name: Download liquid-dsp (MSVC)
+      run: |
+        mkdir "${{ env.DEPS_DIR }}\liquid\include\liquid"
+        mkdir "${{ env.DEPS_DIR }}\liquid\lib"
+        mkdir "${{ env.DEPS_DIR }}\liquid\bin"
+        curl -sL -o "${{ env.DEPS_DIR }}\liquid\include\liquid\liquid.h" https://raw.githubusercontent.com/cjcliffe/CubicSDR/master/external/liquid-dsp/include/liquid/liquid.h
+        curl -sL -o "${{ env.DEPS_DIR }}\liquid\lib\libliquid.lib" https://raw.githubusercontent.com/cjcliffe/CubicSDR/master/external/liquid-dsp/msvc/64/libliquid.lib
+        curl -sL -o "${{ env.DEPS_DIR }}\liquid\bin\libliquid.dll" https://raw.githubusercontent.com/cjcliffe/CubicSDR/master/external/liquid-dsp/msvc/64/libliquid.dll
+
+    - name: Build libfec (MSVC)
+      run: |
+        git clone https://github.com/quiet/libfec.git
+        cd libfec
+        mkdir build && cd build
+        cmake -G Ninja -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} ^
+          -DCMAKE_C_FLAGS="/W3 /EHsc" ^
+          -DCMAKE_INSTALL_PREFIX="${{ env.DEPS_DIR }}\libfec" ..
+        ninja fec
+        mkdir "${{ env.DEPS_DIR }}\libfec\lib"
+        mkdir "${{ env.DEPS_DIR }}\libfec\include"
+        copy fec.lib "${{ env.DEPS_DIR }}\libfec\lib\"
+        copy ..\fec.h "${{ env.DEPS_DIR }}\libfec\include\"
+
+    - name: Build rtl-sdr (MSVC)
+      run: |
+        git clone https://github.com/osmocom/rtl-sdr.git
+        cd rtl-sdr
+        mkdir build && cd build
+        cmake -G Ninja -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} ^
+          -DLIBUSB_LIBRARIES="C:\vcpkg\installed\x64-windows\lib\libusb-1.0.lib" ^
+          -DLIBUSB_INCLUDE_DIRS="C:\vcpkg\installed\x64-windows\include\libusb-1.0" ^
+          -DTHREADS_PTHREADS_LIBRARY="C:\vcpkg\installed\x64-windows\lib\pthreadVC3.lib" ^
+          -DTHREADS_PTHREADS_INCLUDE_DIR="C:\vcpkg\installed\x64-windows\include" ^
+          -DCMAKE_INSTALL_PREFIX="${{ env.DEPS_DIR }}\rtl-sdr" ..
         ninja
+        ninja install
+
+    - name: Build hackrf (MSVC)
+      run: |
+        git clone https://github.com/greatscottgadgets/hackrf.git
+        cd hackrf/host/libhackrf
+        mkdir build && cd build
+        cmake -G Ninja -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} ^
+          -DCMAKE_PREFIX_PATH="C:\vcpkg\installed\x64-windows" ^
+          -DCMAKE_INSTALL_PREFIX="${{ env.DEPS_DIR }}\hackrf" ..
+        ninja
+        ninja install
+
+    - name: Build OpenStint
+      run: |
+        mkdir build && cd build
+        cmake -G Ninja -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} -DUSE_PYTHON=ON ^
+          -DCMAKE_PREFIX_PATH="C:\vcpkg\installed\x64-windows;${{ env.DEPS_DIR }}\hackrf;${{ env.DEPS_DIR }}\rtl-sdr" ^
+          -DLIQUID_INCLUDE_DIR="${{ env.DEPS_DIR }}\liquid\include" ^
+          -DLIQUID_LIB="${{ env.DEPS_DIR }}\liquid\lib\libliquid.lib" ^
+          -DFEC_INCLUDE_DIR="${{ env.DEPS_DIR }}\libfec\include" ^
+          -DFEC_LIB="${{ env.DEPS_DIR }}\libfec\lib\fec.lib" ^
+          -DHACKRF_INCLUDE_DIR="${{ env.DEPS_DIR }}\hackrf\include" ^
+          -DHACKRF_LIB="${{ env.DEPS_DIR }}\hackrf\lib\hackrf.lib" ^
+          -DRTLSDR_INCLUDE_DIR="${{ env.DEPS_DIR }}\rtl-sdr\include" ^
+          -DRTLSDR_LIB="${{ env.DEPS_DIR }}\rtl-sdr\lib\rtlsdr.lib" ..
+        ninja
+
+    - name: Test openstint Python import
+      run: |
+        set PYTHONPATH=build\src
+        python -c "import openstint; print('openstint loaded OK')"
+      env:
+        PYTHONPATH: build/src
+        PATH: ${{ env.DEPS_DIR }}\liquid\bin;${{ env.DEPS_DIR }}\libfec\lib;${{ github.workspace }}\build\src;${{ env.PATH }}
 
     - name: Build bridge .exe
       if: matrix.build_type == 'Release'
@@ -107,48 +126,32 @@ jobs:
       if: matrix.build_type == 'Release'
       run: |
         pip install pyzmq pyrtlsdr pyrtlsdrlib numpy Pillow pyinstaller
-        echo "=== .pyd file ==="
-        dir build\src\openstint*
-        echo "=== test import ==="
-        set PYTHONPATH=build/src
-        python -c "import openstint; print('openstint loaded OK')"
-        echo "=== building desktop ==="
         python desktop/build.py
       env:
         PYTHONPATH: build/src
-
-    - name: Inspect desktop build
-      if: matrix.build_type == 'Release'
-      run: |
-        echo "=== exe size ==="
-        dir dist\openstint-desktop.exe
-        echo "=== PyInstaller warnings ==="
-        type build\openstint-desktop\warn-openstint-desktop.txt
-        echo "=== bundled files ==="
-        pyi-archive_viewer -l dist\openstint-desktop.exe
+        DEPS_DIR: ${{ env.DEPS_DIR }}
 
     - name: Package binaries
-      shell: msys2 {0}
       run: |
         mkdir openstint-windows-x64
-        cp build/src/openstint_hackrf.exe openstint-windows-x64/
-        cp build/src/openstint_rtlsdr.exe openstint-windows-x64/
-        # Copy required DLLs (union of both binaries)
-        ldd build/src/openstint_hackrf.exe build/src/openstint_rtlsdr.exe | grep mingw64 | awk '{print $3}' | sort -u | xargs -I{} cp {} openstint-windows-x64/ || true
-        cp README.md openstint-windows-x64/
-        cp LICENSE openstint-windows-x64/
-        cp tools/start.bat openstint-windows-x64/
-        cp -r integrations openstint-windows-x64/
+        copy build\src\openstint_hackrf.exe openstint-windows-x64\
+        copy build\src\openstint_rtlsdr.exe openstint-windows-x64\
+        copy "${{ env.DEPS_DIR }}\liquid\bin\libliquid.dll" openstint-windows-x64\
+        copy "${{ env.DEPS_DIR }}\rtl-sdr\bin\*.dll" openstint-windows-x64\
+        copy "${{ env.DEPS_DIR }}\hackrf\bin\*.dll" openstint-windows-x64\
+        copy "C:\vcpkg\installed\x64-windows\bin\libusb-1.0.dll" openstint-windows-x64\
+        copy "C:\vcpkg\installed\x64-windows\bin\libzmq*.dll" openstint-windows-x64\
+        copy README.md openstint-windows-x64\
+        copy LICENSE openstint-windows-x64\
+        copy tools\start.bat openstint-windows-x64\
+        xcopy /E /I integrations openstint-windows-x64\integrations
 
     - name: Add bridge and desktop executables
       if: matrix.build_type == 'Release'
-      shell: msys2 {0}
       run: |
-        cp dist/bridge-zround.exe openstint-windows-x64/
-        cp dist/bridge-rcgtiming.exe openstint-windows-x64/
-        cp dist/openstint-desktop.exe openstint-windows-x64/
-        cp build/src/openstint*.pyd openstint-windows-x64/
-        ldd build/src/openstint*.pyd | grep mingw64 | awk '{print $3}' | sort -u | xargs -I{} cp -n {} openstint-windows-x64/ || true
+        copy dist\bridge-zround.exe openstint-windows-x64\
+        copy dist\bridge-rcgtiming.exe openstint-windows-x64\
+        copy dist\openstint-desktop.exe openstint-windows-x64\
 
     - name: Upload artifact
       uses: actions/upload-artifact@v4

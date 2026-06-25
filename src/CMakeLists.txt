@@ -6,9 +6,15 @@ if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release)
 endif()
 
-set(CMAKE_CXX_FLAGS "-Wall -Wextra -Wno-return-type-c-linkage -Wno-deprecated-declarations")
-set(CMAKE_CXX_FLAGS_DEBUG "-O2 -g -fno-omit-frame-pointer -fno-inline")
-set(CMAKE_CXX_FLAGS_RELEASE "-O3")
+if(MSVC)
+  set(CMAKE_CXX_FLAGS "/W3 /EHsc")
+  set(CMAKE_CXX_FLAGS_DEBUG "/Od /Zi")
+  set(CMAKE_CXX_FLAGS_RELEASE "/O2")
+else()
+  set(CMAKE_CXX_FLAGS "-Wall -Wextra -Wno-return-type-c-linkage -Wno-deprecated-declarations")
+  set(CMAKE_CXX_FLAGS_DEBUG "-O2 -g -fno-omit-frame-pointer -fno-inline")
+  set(CMAKE_CXX_FLAGS_RELEASE "-O3")
+endif()
 
 option(USE_HACKRF "Enable HackRF support" ON)
 option(USE_RTLSDR "Enable RTL-SDR support" ON)
@@ -50,18 +56,19 @@ if(USE_HACKRF)
 
     add_executable(openstint_hackrf main_hackrf.cpp ${OPENSTINT_APP_SOURCES})
     target_compile_definitions(openstint_hackrf PRIVATE SAMPLES_PER_SYMBOL=${SAMPLES_PER_SYMBOL})
-    target_compile_options(openstint_hackrf PRIVATE -I ".")
-    target_include_directories(openstint_hackrf PRIVATE ${LIQUID_INCLUDE_DIR} ${HACKRF_INCLUDE_DIR} ${cppzmq_INCLUDE_DIR} ${FEC_INCLUDE_DIR})
+    target_include_directories(openstint_hackrf PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${LIQUID_INCLUDE_DIR} ${HACKRF_INCLUDE_DIR} ${cppzmq_INCLUDE_DIR} ${FEC_INCLUDE_DIR})
     target_link_libraries(openstint_hackrf
       ${LIQUID_LIB}
       ${HACKRF_LIB}
       ${FEC_LIB}
       cppzmq
-      m
     )
 
     if(WIN32)
       target_link_libraries(openstint_hackrf dbghelp)
+    endif()
+    if(NOT MSVC)
+      target_link_libraries(openstint_hackrf m)
     endif()
 endif()
 
@@ -71,18 +78,19 @@ if(USE_RTLSDR)
 
     add_executable(openstint_rtlsdr main_rtlsdr.cpp ${OPENSTINT_APP_SOURCES})
     target_compile_definitions(openstint_rtlsdr PRIVATE SAMPLES_PER_SYMBOL=2)
-    target_compile_options(openstint_rtlsdr PRIVATE -I ".")
-    target_include_directories(openstint_rtlsdr PRIVATE ${LIQUID_INCLUDE_DIR} ${RTLSDR_INCLUDE_DIR} ${cppzmq_INCLUDE_DIR} ${FEC_INCLUDE_DIR})
+    target_include_directories(openstint_rtlsdr PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${LIQUID_INCLUDE_DIR} ${RTLSDR_INCLUDE_DIR} ${cppzmq_INCLUDE_DIR} ${FEC_INCLUDE_DIR})
     target_link_libraries(openstint_rtlsdr
       ${LIQUID_LIB}
       ${RTLSDR_LIB}
       ${FEC_LIB}
       cppzmq
-      m
     )
 
     if(WIN32)
       target_link_libraries(openstint_rtlsdr dbghelp)
+    endif()
+    if(NOT MSVC)
+      target_link_libraries(openstint_rtlsdr m)
     endif()
 endif()
 
