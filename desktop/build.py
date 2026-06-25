@@ -27,6 +27,10 @@ cmd = [
     "--onefile",
     "--name", "openstint-desktop",
     "--windowed",
+    "--hidden-import=zmq",
+    "--hidden-import=pyrtlsdrlib",
+    "--hidden-import=pyrtlsdrlib.lib",
+    "--hidden-import=pyrtlsdrlib.lib.custom_build",
     *datas,
     os.path.join(HERE, "app.py"),
 ]
