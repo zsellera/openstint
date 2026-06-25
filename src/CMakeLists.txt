@@ -12,18 +12,26 @@ set(CMAKE_CXX_FLAGS_RELEASE "-O3")
 
 option(USE_HACKRF "Enable HackRF support" ON)
 option(USE_RTLSDR "Enable RTL-SDR support" ON)
+option(USE_PYTHON "Enable Python bindings (pybind11)" OFF)
 
 set(SAMPLES_PER_SYMBOL 4 CACHE STRING "HackRF samples per symbol (2, 4, or 8)")
 
-# Base source files
-set(OPENSTINT_BASE_SOURCES
+# Core sources (decoder engine, no ZMQ, no device drivers)
+set(OPENSTINT_CORE_SOURCES
     frame.cpp
     transponder.cpp
     passing.cpp
     counters.cpp
-    commons.cpp
-    capture.cpp
     rc4.cpp
+    engine.cpp
+)
+
+# App sources (ZMQ reporter, capture replay, crash handler)
+set(OPENSTINT_APP_SOURCES
+    ${OPENSTINT_CORE_SOURCES}
+    commons.cpp
+    zmq_reporter.cpp
+    capture.cpp
     crash_handler.cpp
 )
 
@@ -40,7 +48,7 @@ if(USE_HACKRF)
     find_path(HACKRF_INCLUDE_DIR NAMES libhackrf/hackrf.h)
     find_library(HACKRF_LIB REQUIRED NAMES hackrf)
 
-    add_executable(openstint_hackrf main_hackrf.cpp ${OPENSTINT_BASE_SOURCES})
+    add_executable(openstint_hackrf main_hackrf.cpp ${OPENSTINT_APP_SOURCES})
     target_compile_definitions(openstint_hackrf PRIVATE SAMPLES_PER_SYMBOL=${SAMPLES_PER_SYMBOL})
     target_compile_options(openstint_hackrf PRIVATE -I ".")
     target_include_directories(openstint_hackrf PRIVATE ${LIQUID_INCLUDE_DIR} ${HACKRF_INCLUDE_DIR} ${cppzmq_INCLUDE_DIR} ${FEC_INCLUDE_DIR})
@@ -61,7 +69,7 @@ if(USE_RTLSDR)
     find_path(RTLSDR_INCLUDE_DIR NAMES rtl-sdr.h)
     find_library(RTLSDR_LIB REQUIRED NAMES rtlsdr)
 
-    add_executable(openstint_rtlsdr main_rtlsdr.cpp ${OPENSTINT_BASE_SOURCES})
+    add_executable(openstint_rtlsdr main_rtlsdr.cpp ${OPENSTINT_APP_SOURCES})
     target_compile_definitions(openstint_rtlsdr PRIVATE SAMPLES_PER_SYMBOL=2)
     target_compile_options(openstint_rtlsdr PRIVATE -I ".")
     target_include_directories(openstint_rtlsdr PRIVATE ${LIQUID_INCLUDE_DIR} ${RTLSDR_INCLUDE_DIR} ${cppzmq_INCLUDE_DIR} ${FEC_INCLUDE_DIR})
@@ -76,4 +84,13 @@ if(USE_RTLSDR)
     if(WIN32)
       target_link_libraries(openstint_rtlsdr dbghelp)
     endif()
+endif()
+
+if(USE_PYTHON)
+    find_package(pybind11 REQUIRED)
+
+    pybind11_add_module(openstint python/bindings.cpp ${OPENSTINT_CORE_SOURCES})
+    target_compile_definitions(openstint PRIVATE SAMPLES_PER_SYMBOL=2)
+    target_include_directories(openstint PRIVATE ${CMAKE_CURRENT_SOURCE_DIR} ${LIQUID_INCLUDE_DIR} ${FEC_INCLUDE_DIR})
+    target_link_libraries(openstint PRIVATE ${LIQUID_LIB} ${FEC_LIB})
 endif()

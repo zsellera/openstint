@@ -5,11 +5,16 @@
 
 #include <complex>
 #include <mutex>
-#include <format>
-#include <string_view>
 #include <cmath>
 
 #include "frame.hpp"
+
+struct RxStatusSnapshot {
+    float noise;
+    float dc_offset;
+    uint32_t frames_rx;
+    uint32_t frames_processed;
+};
 
 class RxStatistics {
     uint32_t frames_received = 0;
@@ -26,6 +31,6 @@ public:
 
     void reset(uint64_t current_timestamp);
     bool reporting_due(uint64_t current_timestamp);
-    std::string to_string();
+    RxStatusSnapshot snapshot();
 };
 

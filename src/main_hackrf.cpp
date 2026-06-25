@@ -6,18 +6,21 @@
 #include <cstdio>
 #include <cstdlib>
 #include <iostream>
+#include <memory>
 #include <string>
 #include <thread>
 #include <vector>
 
 #include "commons.hpp"
 #include "capture.hpp"
+#include "crash_handler.hpp"
 
 #include <libhackrf/hackrf.h>
 
 
 static hackrf_device* device = nullptr;
 static std::atomic<bool> do_exit(false);
+static std::unique_ptr<OpenStintEngine> engine;
 
 static const uint64_t CENTER_FREQ_HZ       = 5000000ULL;
 static const uint32_t BB_FILTER_BW         = 1750000;
@@ -38,8 +41,8 @@ extern "C" int rx_callback(hackrf_transfer* transfer) {
 
     uint32_t sample_count = transfer->valid_length / 2;
     const std::complex<int8_t> *samples = reinterpret_cast<const std::complex<int8_t>*>(transfer->buffer);
-    
-    detect_frames(samples, sample_count);
+
+    engine->detect_frames(samples, sample_count);
 
     // Returning 0 indicates "keep going".
     return 0;
@@ -56,7 +59,7 @@ void file_rx_callback(unsigned char* buf, uint32_t len, void* /*ctx*/) {
     uint32_t sample_count = len / 2;
     const std::complex<int8_t>* samples = reinterpret_cast<const std::complex<int8_t>*>(buf);
 
-    detect_frames(samples, sample_count);
+    engine->detect_frames(samples, sample_count);
 }
 
 int main(int argc, char** argv) {
@@ -71,6 +74,7 @@ int main(int argc, char** argv) {
     bool amp_enable = false; // hackrf has a custom, +13 dB preamp
     const char* hackrf_serial = nullptr;
     std::vector<std::string> capture_files;
+    CommonOptions opts;
 
     // process command line arguments
     for (int i = 1; i < argc; ++i) {
@@ -98,8 +102,8 @@ int main(int argc, char** argv) {
             amp_enable = true;
         } else if (arg == "-c" && i + 1 < argc) {
             capture_files.push_back(argv[++i]);
-        } else if (parse_common_arguments(i, argc, arg, argv)) {
-            // do nothing
+        } else if (parse_common_arguments(opts, i, argc, arg, argv)) {
+            // handled
         } else {
             if (arg != "-h") {
                 std::cerr << "Unknown argument: " << arg << "\n";
@@ -115,12 +119,16 @@ int main(int argc, char** argv) {
             std::cerr << "\t-m          default:off \tEnable monitor mode (print received frames to stdout)\n";
             std::cerr << "\t-t          default:off \tUse system clock as the timebase (beware of NTP jumps)\n";
             std::cerr << "\t-s dir      default:.   \tRC4 registry storage directory\n";
-            
+
             return 1;
         }
     }
 
-    init_commons();
+    install_crash_handler();
+
+    ZmqReporter zmq_reporter(opts.zmq_port);
+    RC4FileBasedRegistry rc4_registry(opts.storage_dir);
+    engine = std::make_unique<OpenStintEngine>(zmq_reporter, rc4_registry, opts.monitor_mode, opts.mode_sysclk);
 
     // install signal handlers
     std::signal(SIGINT, signal_handler);
@@ -131,7 +139,8 @@ int main(int argc, char** argv) {
     if (!capture_files.empty()) {
         std::cout << "HackRF FILE RX: replaying " << capture_files.size()
                   << " capture file(s), sample_rate=" << sample_rate << " Hz\n";
-        replay_capture(capture_files, sample_rate, file_rx_callback, nullptr, do_exit);
+        replay_capture(capture_files, sample_rate, file_rx_callback, nullptr, do_exit,
+                       [&]() { engine->report_detections(); });
         std::cerr << "Done.\n";
         return 0;
     }
@@ -219,8 +228,8 @@ int main(int argc, char** argv) {
     // main loop — exit when handler sets do_exit (Ctrl-C) or device stops
     while (!do_exit && hackrf_is_streaming(device) == HACKRF_TRUE) {
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
-        
-        report_detections();
+
+        engine->report_detections();
     }
 
     // stop RX

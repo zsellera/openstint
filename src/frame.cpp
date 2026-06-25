@@ -14,7 +14,7 @@
 #define PREAMBLE_MAX_BIT_ERRORS 2
 #define STATS_UPDATE_THRESHOLD (1<<12)
 
-#define PREAMBLE_THRESHOLD 0.78f
+#define PREAMBLE_THRESHOLD 0.68f
 #define PREAMBLE_15BIT_PENALTY (15.0f/16.0f)
 
 // preamble matching

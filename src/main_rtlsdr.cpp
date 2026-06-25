@@ -7,12 +7,14 @@
 #include <cstdlib>
 #include <cstring>
 #include <iostream>
+#include <memory>
 #include <string>
 #include <thread>
 #include <vector>
 
 #include "commons.hpp"
 #include "capture.hpp"
+#include "crash_handler.hpp"
 
 #include <rtl-sdr.h>
 
@@ -21,6 +23,7 @@ static rtlsdr_dev_t* device = nullptr;
 static std::atomic<bool> do_exit(false);
 static std::atomic<bool> streaming(false);
 static std::atomic<int64_t> last_rx_ms(0);  // lost radio detection
+static std::unique_ptr<OpenStintEngine> engine;
 
 static const uint64_t CENTER_FREQ_HZ       = 5000000ULL;
 static const int DEFAULT_GAIN_TENTHS_DB    = 200;           // dB
@@ -65,7 +68,7 @@ void rx_callback(unsigned char* buf, uint32_t len, void* /*ctx*/) {
         );
     }
 
-    detect_frames(conversion_buffer.data(), sample_count);
+    engine->detect_frames(conversion_buffer.data(), sample_count);
 }
 
 int main(int argc, char** argv) {
@@ -77,6 +80,7 @@ int main(int argc, char** argv) {
     bool bias_tee = false;
     const char* serial = nullptr;
     std::vector<std::string> capture_files;
+    CommonOptions opts;
 
     // process command line arguments
     for (int i = 1; i < argc; ++i) {
@@ -90,8 +94,8 @@ int main(int argc, char** argv) {
             bias_tee = true;
         } else if (arg == "-c" && i + 1 < argc) {
             capture_files.push_back(argv[++i]);
-        } else if (parse_common_arguments(i, argc, arg, argv)) {
-            // do nothing
+        } else if (parse_common_arguments(opts, i, argc, arg, argv)) {
+            // handled
         } else {
             if (arg != "-h") {
                 std::cerr << "Unknown argument: " << arg << "\n";
@@ -110,7 +114,11 @@ int main(int argc, char** argv) {
         }
     }
 
-    init_commons();
+    install_crash_handler();
+
+    ZmqReporter zmq_reporter(opts.zmq_port);
+    RC4FileBasedRegistry rc4_registry(opts.storage_dir);
+    engine = std::make_unique<OpenStintEngine>(zmq_reporter, rc4_registry, opts.monitor_mode, opts.mode_sysclk);
 
     // install signal handlers
     std::signal(SIGINT, signal_handler);
@@ -121,7 +129,8 @@ int main(int argc, char** argv) {
     if (!capture_files.empty()) {
         std::cout << "RTL-SDR FILE RX: replaying " << capture_files.size()
                   << " capture file(s), sample_rate=" << sample_rate << " Hz\n";
-        replay_capture(capture_files, sample_rate, rx_callback, nullptr, do_exit);
+        replay_capture(capture_files, sample_rate, rx_callback, nullptr, do_exit,
+                       [&]() { engine->report_detections(); });
         std::cerr << "Done.\n";
         return 0;
     }
@@ -154,8 +163,8 @@ int main(int argc, char** argv) {
 
     bool is_v4 = false;
     char manufact[256] = {0}, product[256] = {0}, sn[256] = {0};
-    // 1. Attempt to retrieve USB strings. 
-    // Note: On Windows, calling rtlsdr_get_usb_strings(device, ...) after rtlsdr_open 
+    // 1. Attempt to retrieve USB strings.
+    // Note: On Windows, calling rtlsdr_get_usb_strings(device, ...) after rtlsdr_open
     // is more reliable than using the device index before opening.
     if (rtlsdr_get_usb_strings(device, manufact, product, sn) == 0) {
         is_v4 = (std::strstr(product, "V4") != nullptr);
@@ -239,7 +248,7 @@ int main(int argc, char** argv) {
         streaming = true;
         last_rx_ms = std::chrono::duration_cast<std::chrono::milliseconds>(
             std::chrono::steady_clock::now().time_since_epoch()).count();
-        
+
         std::thread rx_thread([]() {
             int r = rtlsdr_read_async(device, rx_callback, nullptr, 12, CHUNK_BYTES);
             if (r != 0) {
@@ -253,7 +262,7 @@ int main(int argc, char** argv) {
         while (!do_exit && streaming) {
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
-            report_detections();
+            engine->report_detections();
 
             // watchdog: rtlsdr_read_async() may stall silently if the device
             // is unplugged, so bail out if no samples arrive for a while

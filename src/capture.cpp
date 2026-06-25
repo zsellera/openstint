@@ -6,7 +6,6 @@
 #include <vector>
 
 #include "capture.hpp"
-#include "commons.hpp"
 
 
 // number of raw bytes (2 per IQ sample) read per chunk, matching the RTL-SDR
@@ -17,7 +16,8 @@ void replay_capture(const std::vector<std::string>& files,
                     double sample_rate,
                     capture_callback_t cb,
                     void* ctx,
-                    const std::atomic<bool>& do_exit) {
+                    const std::atomic<bool>& do_exit,
+                    report_callback_t report_cb) {
     std::vector<uint8_t> read_buf(CHUNK_BYTES);
 
     // one chunk worth of complex samples corresponds to this much real time,
@@ -66,7 +66,7 @@ void replay_capture(const std::vector<std::string>& files,
             // hand the raw chunk to the device-specific converter, then drain
             // whatever frames it produced.
             cb(read_buf.data(), byte_count, ctx);
-            report_detections();
+            if (report_cb) report_cb();
 
             uint32_t sample_count = byte_count / 2;
             next_chunk += std::chrono::duration_cast<clock::duration>(
@@ -74,8 +74,7 @@ void replay_capture(const std::vector<std::string>& files,
             std::this_thread::sleep_until(next_chunk);
         }
 
-        // give the pipeline a moment to flush, then emit the final report
         std::this_thread::sleep_for(std::chrono::milliseconds(500));
-        report_detections();
+        if (report_cb) report_cb();
     }
 }

@@ -8,14 +8,17 @@ extern "C" {
 }
 #include <liquid/liquid.h>
 
-static void *viterbi_decoder;
 static crc_scheme crc8_scheme = LIQUID_CRC_8;
 
-void init_transponders() {
+TransponderDecoder::TransponderDecoder() {
     viterbi_decoder = create_viterbi29(32);
 }
 
-int decode_openstint(const uint8_t *softbits, uint32_t *transponder_id) {
+TransponderDecoder::~TransponderDecoder() {
+    delete_viterbi29(viterbi_decoder);
+}
+
+int TransponderDecoder::decode_openstint(const uint8_t *softbits, uint32_t *transponder_id) {
     uint8_t decoded[4];
 
     init_viterbi29(viterbi_decoder, 0);
@@ -26,7 +29,7 @@ int decode_openstint(const uint8_t *softbits, uint32_t *transponder_id) {
     return crc_validate_message(crc8_scheme, decoded, 3, decoded[3]);
 }
 
-int decode_rc3(const uint8_t *softbits, uint32_t *transponder_id, uint8_t *status_code) {
+int TransponderDecoder::decode_rc3(const uint8_t *softbits, uint32_t *transponder_id, uint8_t *status_code) {
     // RC3 use a K=24, r=1/2 convolutional encoder with polynoms 0xEEC20F and 0xEEC20D
     // Decoding this properly with error correction must have some unknown trick. However,
     // we can do non-trivial decoding as well.
