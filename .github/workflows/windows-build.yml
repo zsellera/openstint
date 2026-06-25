@@ -97,7 +97,7 @@ jobs:
       if: matrix.build_type == 'Release'
       shell: msys2 {0}
       run: |
-        pip install pyzmq pyrtlsdr pyinstaller
+        pip install pyzmq pyrtlsdr pyrtlsdrlib pyinstaller
         python desktop/build.py
 
     - name: Package binaries
