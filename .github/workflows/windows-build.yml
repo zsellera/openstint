@@ -95,13 +95,8 @@ jobs:
 
     - name: Build desktop .exe
       if: matrix.build_type == 'Release'
-      shell: msys2 {0}
       run: |
-        python -m venv /tmp/desktop-venv
-        source /tmp/desktop-venv/bin/activate
-        pip install pyzmq pyrtlsdr numpy Pillow pyinstaller
-        pip download --only-binary :all: --platform win_amd64 --python-version 3 --no-deps pyrtlsdrlib -d /tmp/whl
-        unzip -o /tmp/whl/pyrtlsdrlib-*.whl -d "$(python -c 'import site; print(site.getsitepackages()[0])')"
+        pip install pyzmq pyrtlsdr pyrtlsdrlib numpy Pillow pyinstaller
         python desktop/build.py
 
     - name: Package binaries
