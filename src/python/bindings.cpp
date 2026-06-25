@@ -73,6 +73,15 @@ PYBIND11_MODULE(openstint, m) {
         .value("RC3", TransponderProtocol::RC3)
         .value("RC4", TransponderProtocol::RC4);
 
+    py::class_<Detection>(m, "Detection")
+        .def_readonly("timestamp", &Detection::timestamp)
+        .def_readonly("timecode", &Detection::timecode)
+        .def_readonly("rssi", &Detection::rssi)
+        .def("__repr__", [](const Detection& d) {
+            return "<Detection tc=" + std::to_string(d.timecode)
+                + " rssi=" + std::to_string(d.rssi) + ">";
+        });
+
     py::class_<Passing>(m, "Passing")
         .def_readonly("timestamp", &Passing::timestamp)
         .def_readonly("transponder_system", &Passing::transponder_type)
@@ -80,6 +89,7 @@ PYBIND11_MODULE(openstint, m) {
         .def_readonly("rssi", &Passing::rssi)
         .def_readonly("hits", &Passing::hits)
         .def_readonly("duration", &Passing::duration)
+        .def_readonly("detections", &Passing::detections)
         .def("__repr__", [](const Passing& p) {
             return "<Passing id=" + std::to_string(p.transponder_id)
                 + " rssi=" + std::to_string(p.rssi)

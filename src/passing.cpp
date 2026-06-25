@@ -351,7 +351,8 @@ Passing create_passing(TransponderKey transponder_key, const std::deque<Detectio
         .transponder_id = transponder_key.second,
         .rssi = stats.max_rssi,
         .hits = detections.size(),
-        .duration = stats.duration
+        .duration = stats.duration,
+        .detections = {detections.begin(), detections.end()}
     };
     return p;
 }

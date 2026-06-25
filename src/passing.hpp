@@ -42,6 +42,7 @@ struct Passing {
     float rssi;
     size_t hits;
     uint64_t duration;
+    std::vector<Detection> detections;
 };
 
 struct TimeSync {

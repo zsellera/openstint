@@ -331,16 +331,20 @@ class OpenStintDesktop:
                 f"dur={passing.duration}")
         sys_name = self._SYSTEM_NAMES.get(passing.transponder_system, "OPN")
         self._zmq_send(
-            f"P {passing.timestamp} {sys_name} "
+            f"P {int(passing.timestamp/1000)} {sys_name} "
             f"{passing.transponder_id} {passing.rssi:.2f} "
             f"{passing.hits} {passing.duration}")
+        detections = [(d.timecode, d.rssi) for d in passing.detections]
+        passing_ts = passing.timestamp
+        first_det_ts = passing.detections[0].timestamp if passing.detections else 0
+        duration_us = passing.duration
         with self._lock:
-            self._pending_passings.append(line)
+            self._pending_passings.append((line, detections, passing_ts, first_det_ts, duration_us))
 
     def _on_timesync(self, ts):
         sys_name = self._SYSTEM_NAMES.get(ts.transponder_system, "OPN")
         self._zmq_send(
-            f"T {ts.timestamp} {sys_name} "
+            f"T {int(ts.timestamp/1000)} {sys_name} "
             f"{ts.transponder_id} {ts.transponder_timestamp}")
 
     def _on_status(self, report_ts, noise, dc_offset, frames_rx, frames_processed):
@@ -472,9 +476,18 @@ class OpenStintDesktop:
         content_pane = ttk.PanedWindow(parent, orient=tk.VERTICAL)
         content_pane.pack(fill=tk.BOTH, expand=True)
 
-        # Passings list (top 2/3)
+        # Detection graph (top 1/3)
+        graph_frame = ttk.LabelFrame(parent, text="Detection Graph", padding=4)
+        content_pane.add(graph_frame, weight=1)
+
+        self.detection_canvas = tk.Canvas(
+            graph_frame, bg="#1e1e1e", height=150)
+        self.detection_canvas.pack(fill=tk.BOTH, expand=True)
+        self._passing_detections = {}
+
+        # Passings list (middle 1/3)
         passings_frame = ttk.LabelFrame(parent, text="Recent Passings", padding=4)
-        content_pane.add(passings_frame, weight=2)
+        content_pane.add(passings_frame, weight=1)
 
         columns = ("time", "id", "system", "rssi", "hits", "duration")
         self.passings_tree = ttk.Treeview(
@@ -492,6 +505,8 @@ class OpenStintDesktop:
         self.passings_tree.configure(yscrollcommand=scroll_p.set)
         self.passings_tree.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         scroll_p.pack(side=tk.RIGHT, fill=tk.Y)
+
+        self.passings_tree.bind("<<TreeviewSelect>>", self._on_passing_selected)
 
         # Event log (bottom 1/3)
         log_frame = ttk.LabelFrame(parent, text="Event Log", padding=4)
@@ -573,7 +588,7 @@ class OpenStintDesktop:
         for line in events:
             self._append_log(line)
 
-        for line in passings:
+        for line, detections, passing_ts, first_det_ts, duration_us in passings:
             parts = line.split("  ")
             vals = {}
             for p in parts:
@@ -583,7 +598,7 @@ class OpenStintDesktop:
                     vals[k] = v
                 elif not vals:
                     vals["time"] = p
-            self.passings_tree.insert("", 0, values=(
+            iid = self.passings_tree.insert("", 0, values=(
                 vals.get("time", ""),
                 vals.get("ID", ""),
                 vals.get("sys", ""),
@@ -591,7 +606,9 @@ class OpenStintDesktop:
                 vals.get("hits", ""),
                 vals.get("dur", ""),
             ))
+            self._passing_detections[iid] = (detections, passing_ts, first_det_ts, duration_us)
             self.stats_passings += 1
+            self.passings_tree.selection_set(iid)
 
         for noise, frames_rx, frames_decoded in stats:
             self.stats_noise = noise
@@ -669,6 +686,115 @@ class OpenStintDesktop:
         self.waterfall_photo = ImageTk.PhotoImage(img)
         self.waterfall_canvas.create_image(0, 0, anchor=tk.NW,
                                            image=self.waterfall_photo)
+
+    def _on_passing_selected(self, _event):
+        selection = self.passings_tree.selection()
+        if not selection:
+            return
+        iid = selection[0]
+        data = self._passing_detections.get(iid)
+        if not data:
+            self.detection_canvas.delete("all")
+            return
+        detections, passing_ts, first_det_ts, duration_us = data
+        self._draw_detection_graph(detections, passing_ts, first_det_ts, duration_us)
+
+    def _draw_detection_graph(self, detections, passing_ts, first_det_ts, duration_us):
+        self.detection_canvas.delete("all")
+        if not detections:
+            return
+
+        cw = self.detection_canvas.winfo_width()
+        ch = self.detection_canvas.winfo_height()
+        if cw < 20 or ch < 20:
+            return
+
+        margin_l, margin_r, margin_t, margin_b = 50, 20, 10, 30
+        plot_w = cw - margin_l - margin_r
+        plot_h = ch - margin_t - margin_b
+        if plot_w < 10 or plot_h < 10:
+            return
+
+        tc0 = detections[0][0]
+        times_ms = [(tc - tc0) / (SAMPLE_RATE / 1000.0) for tc, _ in detections]
+        rssis = [rssi for _, rssi in detections]
+
+        t_min, t_max = 0.0, max(times_ms) if max(times_ms) > 0 else 1.0
+        r_min = min(-43.0, min(rssis) - 1.0)
+        r_max = max(0.0, max(rssis) + 1.0)
+        if r_max - r_min < 2.0:
+            r_min -= 1.0
+            r_max += 1.0
+
+        def to_x(t_val):
+            return margin_l + (t_val - t_min) / (t_max - t_min) * plot_w
+
+        def to_y(rssi_val):
+            return margin_t + (1.0 - (rssi_val - r_min) / (r_max - r_min)) * plot_h
+
+        # axes
+        self.detection_canvas.create_line(
+            margin_l, margin_t, margin_l, ch - margin_b, fill="#555555")
+        self.detection_canvas.create_line(
+            margin_l, ch - margin_b, cw - margin_r, ch - margin_b, fill="#555555")
+
+        # RSSI axis labels (vertical, left side)
+        n_rticks = 4
+        for i in range(n_rticks + 1):
+            r_val = r_min + (r_max - r_min) * i / n_rticks
+            y = to_y(r_val)
+            self.detection_canvas.create_line(
+                margin_l - 3, y, margin_l, y, fill="#555555")
+            self.detection_canvas.create_text(
+                margin_l - 5, y, anchor=tk.E, fill="#aaaaaa",
+                text=f"{r_val:.0f}", font=("Courier", 8))
+
+        # RSSI axis title
+        self.detection_canvas.create_text(
+            12, (margin_t + ch - margin_b) / 2, anchor=tk.W,
+            fill="#aaaaaa", text="RSSI", font=("Courier", 8), angle=90)
+
+        # Time axis labels (horizontal, bottom)
+        n_ticks = 5
+        for i in range(n_ticks + 1):
+            t_val = t_min + (t_max - t_min) * i / n_ticks
+            x = to_x(t_val)
+            self.detection_canvas.create_line(
+                x, ch - margin_b, x, ch - margin_b + 3, fill="#555555")
+            self.detection_canvas.create_text(
+                x, ch - margin_b + 5, anchor=tk.N, fill="#aaaaaa",
+                text=f"{t_val:.0f}", font=("Courier", 8))
+
+        # Time axis title
+        self.detection_canvas.create_text(
+            (margin_l + cw - margin_r) / 2, ch - 3, anchor=tk.S,
+            fill="#aaaaaa", text="ms", font=("Courier", 8))
+
+        # Passing vertical line
+        # passing_ts = first_det.timestamp + timecode_to_usec(weighted_tc)
+        # offset in usec = passing_ts - first_det_ts
+        # offset in ms = offset_usec / 1000
+        passing_ms = (passing_ts - first_det_ts) / 1000.0
+        if t_min <= passing_ms <= t_max:
+            px = to_x(passing_ms)
+            self.detection_canvas.create_line(
+                px, margin_t, px, ch - margin_b, fill="#ff6600", dash=(4, 2))
+
+        if duration_us > 0:
+            half_dur_ms = duration_us / 2000.0
+            for edge_ms in (passing_ms - half_dur_ms, passing_ms + half_dur_ms):
+                if t_min <= edge_ms <= t_max:
+                    ex = to_x(edge_ms)
+                    self.detection_canvas.create_line(
+                        ex, margin_t, ex, ch - margin_b,
+                        fill="#0011ff", dash=(2, 4))
+
+        # detection dots
+        for t_ms, rssi in zip(times_ms, rssis):
+            x = to_x(t_ms)
+            y = to_y(rssi)
+            self.detection_canvas.create_oval(
+                x - 3, y - 3, x + 3, y + 3, fill="#00ccff", outline="")
 
     def _on_close(self):
         self.zround_bridge.stop()
