@@ -98,6 +98,7 @@ jobs:
           -DLIBUSB_INCLUDE_DIR="C:\vcpkg\installed\x64-windows\include\libusb-1.0" ^
           -DLIBUSB_LIBRARIES="C:\vcpkg\installed\x64-windows\lib\libusb-1.0.lib" ^
           -DCMAKE_PREFIX_PATH="C:\vcpkg\installed\x64-windows" ^
+          -DCMAKE_C_FLAGS="/I C:\vcpkg\installed\x64-windows\include" ^
           -DCMAKE_INSTALL_PREFIX="${{ env.DEPS_DIR }}\hackrf" ..
         ninja
         ninja install
