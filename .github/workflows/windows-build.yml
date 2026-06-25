@@ -72,19 +72,31 @@ jobs:
         curl --output /mingw64/bin/libliquid.a https://raw.githubusercontent.com/cjcliffe/CubicSDR/refs/heads/master/external/liquid-dsp/gcc/64/libliquid.a
         curl --output /mingw64/bin/libliquid.dll https://raw.githubusercontent.com/cjcliffe/CubicSDR/refs/heads/master/external/liquid-dsp/gcc/64/libliquid.dll
 
+    - name: Setup Python
+      if: matrix.build_type == 'Release'
+      uses: actions/setup-python@v5
+      with:
+        python-version: '3.12'
+
+    - name: Install pybind11
+      if: matrix.build_type == 'Release'
+      run: pip install pybind11
+
     - name: Build OpenStint
       shell: msys2 {0}
       run: |
         mkdir build
         cd build
-        cmake -G "Ninja" -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} -DUSE_PYTHON=ON ..
+        PYTHON_EXE=$(ls /c/hostedtoolcache/windows/Python/3.12.*/x64/python.exe 2>/dev/null | head -1)
+        if [ -n "$PYTHON_EXE" ]; then
+          PYBIND11_DIR=$("$PYTHON_EXE" -c "import pybind11; print(pybind11.get_cmake_dir())" | tr '\\' '/')
+          cmake -G "Ninja" -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} -DUSE_PYTHON=ON \
+            -DPython_EXECUTABLE="$PYTHON_EXE" \
+            -Dpybind11_DIR="$PYBIND11_DIR" ..
+        else
+          cmake -G "Ninja" -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} ..
+        fi
         ninja
-
-    - name: Setup Python
-      if: matrix.build_type == 'Release'
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.14'
 
     - name: Build bridge .exe
       if: matrix.build_type == 'Release'
