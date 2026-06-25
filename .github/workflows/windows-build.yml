@@ -107,7 +107,25 @@ jobs:
       if: matrix.build_type == 'Release'
       run: |
         pip install pyzmq pyrtlsdr pyrtlsdrlib numpy Pillow pyinstaller
+        echo "=== .pyd file ==="
+        dir build\src\openstint*
+        echo "=== test import ==="
+        set PYTHONPATH=build/src
+        python -c "import openstint; print('openstint loaded OK')"
+        echo "=== building desktop ==="
         python desktop/build.py
+      env:
+        PYTHONPATH: build/src
+
+    - name: Inspect desktop build
+      if: matrix.build_type == 'Release'
+      run: |
+        echo "=== exe size ==="
+        dir dist\openstint-desktop.exe
+        echo "=== PyInstaller warnings ==="
+        type build\openstint-desktop\warn-openstint-desktop.txt
+        echo "=== bundled files ==="
+        pyi-archive_viewer -l dist\openstint-desktop.exe
 
     - name: Package binaries
       shell: msys2 {0}
@@ -129,6 +147,8 @@ jobs:
         cp dist/bridge-zround.exe openstint-windows-x64/
         cp dist/bridge-rcgtiming.exe openstint-windows-x64/
         cp dist/openstint-desktop.exe openstint-windows-x64/
+        cp build/src/openstint*.pyd openstint-windows-x64/
+        ldd build/src/openstint*.pyd | grep mingw64 | awk '{print $3}' | sort -u | xargs -I{} cp -n {} openstint-windows-x64/ || true
 
     - name: Upload artifact
       uses: actions/upload-artifact@v4
