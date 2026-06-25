@@ -45,6 +45,7 @@ jobs:
         VCPKG_ROOT: C:\vcpkg
 
     - name: Download liquid-dsp (MSVC)
+      shell: cmd
       run: |
         mkdir "${{ env.DEPS_DIR }}\liquid\include\liquid"
         mkdir "${{ env.DEPS_DIR }}\liquid\lib"
@@ -54,10 +55,12 @@ jobs:
         curl -sL -o "${{ env.DEPS_DIR }}\liquid\bin\libliquid.dll" https://raw.githubusercontent.com/cjcliffe/CubicSDR/master/external/liquid-dsp/msvc/64/libliquid.dll
 
     - name: Build libfec (MSVC)
+      shell: cmd
       run: |
         git clone https://github.com/quiet/libfec.git
         cd libfec
-        mkdir build && cd build
+        mkdir build
+        cd build
         cmake -G Ninja -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} ^
           -DCMAKE_C_FLAGS="/W3 /EHsc" ^
           -DCMAKE_INSTALL_PREFIX="${{ env.DEPS_DIR }}\libfec" ..
@@ -68,10 +71,12 @@ jobs:
         copy ..\fec.h "${{ env.DEPS_DIR }}\libfec\include\"
 
     - name: Build rtl-sdr (MSVC)
+      shell: cmd
       run: |
         git clone https://github.com/osmocom/rtl-sdr.git
         cd rtl-sdr
-        mkdir build && cd build
+        mkdir build
+        cd build
         cmake -G Ninja -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} ^
           -DLIBUSB_LIBRARIES="C:\vcpkg\installed\x64-windows\lib\libusb-1.0.lib" ^
           -DLIBUSB_INCLUDE_DIRS="C:\vcpkg\installed\x64-windows\include\libusb-1.0" ^
@@ -82,10 +87,12 @@ jobs:
         ninja install
 
     - name: Build hackrf (MSVC)
+      shell: cmd
       run: |
         git clone https://github.com/greatscottgadgets/hackrf.git
-        cd hackrf/host/libhackrf
-        mkdir build && cd build
+        cd hackrf\host\libhackrf
+        mkdir build
+        cd build
         cmake -G Ninja -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} ^
           -DCMAKE_PREFIX_PATH="C:\vcpkg\installed\x64-windows" ^
           -DCMAKE_INSTALL_PREFIX="${{ env.DEPS_DIR }}\hackrf" ..
@@ -93,8 +100,10 @@ jobs:
         ninja install
 
     - name: Build OpenStint
+      shell: cmd
       run: |
-        mkdir build && cd build
+        mkdir build
+        cd build
         cmake -G Ninja -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} -DUSE_PYTHON=ON ^
           -DCMAKE_PREFIX_PATH="C:\vcpkg\installed\x64-windows;${{ env.DEPS_DIR }}\hackrf;${{ env.DEPS_DIR }}\rtl-sdr" ^
           -DLIQUID_INCLUDE_DIR="${{ env.DEPS_DIR }}\liquid\include" ^
@@ -108,12 +117,11 @@ jobs:
         ninja
 
     - name: Test openstint Python import
+      shell: cmd
       run: |
+        set PATH=${{ env.DEPS_DIR }}\liquid\bin;${{ env.DEPS_DIR }}\libfec\lib;%PATH%
         set PYTHONPATH=build\src
         python -c "import openstint; print('openstint loaded OK')"
-      env:
-        PYTHONPATH: build/src
-        PATH: ${{ env.DEPS_DIR }}\liquid\bin;${{ env.DEPS_DIR }}\libfec\lib;${{ github.workspace }}\build\src;${{ env.PATH }}
 
     - name: Build bridge .exe
       if: matrix.build_type == 'Release'
@@ -132,6 +140,7 @@ jobs:
         DEPS_DIR: ${{ env.DEPS_DIR }}
 
     - name: Package binaries
+      shell: cmd
       run: |
         mkdir openstint-windows-x64
         copy build\src\openstint_hackrf.exe openstint-windows-x64\
@@ -148,6 +157,7 @@ jobs:
 
     - name: Add bridge and desktop executables
       if: matrix.build_type == 'Release'
+      shell: cmd
       run: |
         copy dist\bridge-zround.exe openstint-windows-x64\
         copy dist\bridge-rcgtiming.exe openstint-windows-x64\
