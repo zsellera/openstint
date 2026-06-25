@@ -26,7 +26,7 @@ static const uint64_t CENTER_FREQ_HZ       = 5000000ULL;
 static const int DEFAULT_GAIN_TENTHS_DB    = 200;           // dB
 
 // number of raw bytes (2 per IQ sample) read per chunk, matching the RTL-SDR read buffer
-static const size_t CHUNK_BYTES = 32768;
+static const size_t CHUNK_BYTES = 2*16384;
 
 // Conversion buffer: RTL-SDR provides uint8_t, commons.cpp expects int8_t
 static std::vector<std::complex<int8_t>> conversion_buffer(CHUNK_BYTES / 2);
@@ -241,7 +241,7 @@ int main(int argc, char** argv) {
             std::chrono::steady_clock::now().time_since_epoch()).count();
         
         std::thread rx_thread([]() {
-            int r = rtlsdr_read_async(device, rx_callback, nullptr, 12, 32768);
+            int r = rtlsdr_read_async(device, rx_callback, nullptr, 12, CHUNK_BYTES);
             if (r != 0) {
                 std::fprintf(stderr, "rtlsdr_read_async() failed: %d\n", r);
             }
