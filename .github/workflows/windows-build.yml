@@ -98,7 +98,20 @@ jobs:
       shell: msys2 {0}
       run: |
         pip install pyinstaller
+
+        # Debug: verify openstint.pyd exists and is importable
+        echo "=== .pyd files in build/src ==="
+        ls -la build/src/openstint*
+        echo "=== Attempting import ==="
+        PYTHONPATH=build/src python -c "import openstint; print('OK:', openstint)"
+
         python desktop/build.py
+
+        # Debug: check if openstint ended up in the bundle
+        echo "=== PyInstaller warnings for openstint ==="
+        grep -i openstint build/openstint-desktop/warn-openstint-desktop.txt || echo "(not mentioned)"
+        echo "=== TOC entries for openstint ==="
+        grep -i openstint build/openstint-desktop/Analysis-00.toc || echo "(not in TOC)"
 
     - name: Package binaries
       shell: msys2 {0}
