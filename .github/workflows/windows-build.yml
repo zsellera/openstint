@@ -41,6 +41,7 @@ jobs:
           mingw-w64-x86_64-python-numpy
           mingw-w64-x86_64-python-pillow
           mingw-w64-x86_64-pybind11
+          mingw-w64-x86_64-pyinstaller
           git
           make
           autoconf
@@ -80,18 +81,18 @@ jobs:
         cmake -G "Ninja" -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} -DUSE_PYTHON=ON ..
         ninja
 
-    - name: Setup Python
-      if: matrix.build_type == 'Release'
-      uses: actions/setup-python@v5
-      with:
-        python-version: '3.12'
+    # - name: Setup Python
+    #   if: matrix.build_type == 'Release'
+    #   uses: actions/setup-python@v5
+    #   with:
+    #     python-version: '3.12'
 
-    - name: Build bridge .exe
-      if: matrix.build_type == 'Release'
-      run: |
-        pip install pyzmq tornado pyinstaller
-        pyinstaller --onefile --name bridge-zround --hidden-import=zmq --hidden-import=tornado integrations/bridge-zround.py
-        pyinstaller --onefile --name bridge-rcgtiming --hidden-import=zmq --hidden-import=tornado integrations/bridge-rcgtiming.py
+    # - name: Build bridge .exe
+    #   if: matrix.build_type == 'Release'
+    #   run: |
+    #     pip install pyzmq tornado pyinstaller
+    #     pyinstaller --onefile --name bridge-zround --hidden-import=zmq --hidden-import=tornado integrations/bridge-zround.py
+    #     pyinstaller --onefile --name bridge-rcgtiming --hidden-import=zmq --hidden-import=tornado integrations/bridge-rcgtiming.py
 
     - name: Debug openstint .pyd
       if: matrix.build_type == 'Release'
@@ -100,7 +101,7 @@ jobs:
         echo "=== .pyd file ==="
         ls -la build/src/openstint*.pyd
         echo "=== DLL dependencies of .pyd ==="
-        ldd build/src/openstint.cp314-win_amd64.pyd
+        objdump -p build/src/openstint.cp314-win_amd64.pyd | grep "DLL Name"
         echo "=== find_spec ==="
         python -c "import sys; sys.path.insert(0,'build/src'); import importlib.util; s=importlib.util.find_spec('openstint'); print('spec:',s); print('origin:',s.origin if s else None)" || true
         echo "=== import attempt ==="
@@ -110,7 +111,6 @@ jobs:
       if: matrix.build_type == 'Release'
       shell: msys2 {0}
       run: |
-        pip install pyinstaller
         python desktop/build.py
 
     - name: Package binaries
