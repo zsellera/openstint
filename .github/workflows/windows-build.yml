@@ -93,33 +93,24 @@ jobs:
         pyinstaller --onefile --name bridge-zround --hidden-import=zmq --hidden-import=tornado integrations/bridge-zround.py
         pyinstaller --onefile --name bridge-rcgtiming --hidden-import=zmq --hidden-import=tornado integrations/bridge-rcgtiming.py
 
+    - name: Debug openstint .pyd
+      if: matrix.build_type == 'Release'
+      shell: msys2 {0}
+      run: |
+        echo "=== .pyd file ==="
+        ls -la build/src/openstint*.pyd
+        echo "=== DLL dependencies of .pyd ==="
+        ldd build/src/openstint.cp314-win_amd64.pyd
+        echo "=== find_spec ==="
+        python -c "import sys; sys.path.insert(0,'build/src'); import importlib.util; s=importlib.util.find_spec('openstint'); print('spec:',s); print('origin:',s.origin if s else None)" || true
+        echo "=== import attempt ==="
+        python -c "import sys; sys.path.insert(0,'build/src'); import openstint; print('OK:',openstint)" 2>&1 || true
+
     - name: Build desktop app
       if: matrix.build_type == 'Release'
       shell: msys2 {0}
       run: |
         pip install pyinstaller
-
-        # Debug: why can't Python import the .pyd?
-        echo "=== .pyd file ==="
-        ls -la build/src/openstint*.pyd
-        echo "=== DLL dependencies of .pyd ==="
-        ldd build/src/openstint.cp314-win_amd64.pyd
-        echo "=== Python sys.path and import attempt ==="
-        python -c "
-import sys, os, importlib, importlib.util
-sys.path.insert(0, os.path.abspath('build/src'))
-print('sys.path:', sys.path[:5])
-print('Files in build/src:', [f for f in os.listdir('build/src') if 'openstint' in f])
-spec = importlib.util.find_spec('openstint')
-print('find_spec:', spec)
-if spec:
-    print('origin:', spec.origin)
-try:
-    import openstint
-    print('OK:', openstint)
-except ImportError as e:
-    print('ImportError:', type(e).__name__, e)
-"
         python desktop/build.py
 
     - name: Package binaries
