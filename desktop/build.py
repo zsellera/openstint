@@ -27,6 +27,7 @@ cmd = [
     "--onefile",
     "--name", "openstint-desktop",
     "--windowed",
+    "--hidden-import=zmq",
     *datas,
     os.path.join(HERE, "app.py"),
 ]

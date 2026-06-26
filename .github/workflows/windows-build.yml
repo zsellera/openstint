@@ -35,6 +35,12 @@ jobs:
           mingw-w64-x86_64-cppzmq
           mingw-w64-x86_64-hackrf
           mingw-w64-x86_64-rtl-sdr
+          mingw-w64-x86_64-python
+          mingw-w64-x86_64-python-pip
+          mingw-w64-x86_64-python-pyzmq
+          mingw-w64-x86_64-python-numpy
+          mingw-w64-x86_64-python-pillow
+          mingw-w64-x86_64-pybind11
           git
           make
           autoconf
@@ -71,7 +77,7 @@ jobs:
       run: |
         mkdir build
         cd build
-        cmake -G "Ninja" -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} ..
+        cmake -G "Ninja" -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} -DUSE_PYTHON=ON ..
         ninja
 
     - name: Setup Python
@@ -86,6 +92,13 @@ jobs:
         pip install pyzmq tornado pyinstaller
         pyinstaller --onefile --name bridge-zround --hidden-import=zmq --hidden-import=tornado integrations/bridge-zround.py
         pyinstaller --onefile --name bridge-rcgtiming --hidden-import=zmq --hidden-import=tornado integrations/bridge-rcgtiming.py
+
+    - name: Build desktop app
+      if: matrix.build_type == 'Release'
+      shell: msys2 {0}
+      run: |
+        pip install pyinstaller
+        python desktop/build.py
 
     - name: Package binaries
       shell: msys2 {0}
@@ -106,6 +119,12 @@ jobs:
       run: |
         cp dist/bridge-zround.exe openstint-windows-x64/
         cp dist/bridge-rcgtiming.exe openstint-windows-x64/
+
+    - name: Add desktop executable
+      if: matrix.build_type == 'Release'
+      shell: msys2 {0}
+      run: |
+        cp dist/openstint-desktop.exe openstint-windows-x64/
 
     - name: Upload artifact
       uses: actions/upload-artifact@v4

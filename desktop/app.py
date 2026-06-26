@@ -14,7 +14,7 @@ import zmq
 import zmq.asyncio
 import numpy as np
 from PIL import Image, ImageTk
-from rtlsdr import RtlSdr, librtlsdr
+from rtlsdr_wrapper import RtlSdr, get_device_count, get_device_name
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..', 'build', 'src'))
 import openstint
@@ -46,12 +46,10 @@ def set_realtime_priority():
 
 
 def enumerate_rtlsdr_devices():
-    count = librtlsdr.rtlsdr_get_device_count()
+    count = get_device_count()
     devices = []
     for i in range(count):
-        name = librtlsdr.rtlsdr_get_device_name(i)
-        if isinstance(name, bytes):
-            name = name.decode()
+        name = get_device_name(i)
         devices.append((i, f"[{i}] {name}"))
     return devices
 
@@ -119,7 +117,7 @@ class SdrController:
             return
         self._last_waterfall_time = now
 
-        iq = np.array(raw, dtype=np.float32)
+        iq = np.frombuffer(raw, dtype=np.uint8).astype(np.float32)
         n_iq = len(iq) // 2
         iq = iq[:n_iq * 2].reshape(n_iq, 2)
         x = (iq[:, 0] - 128.0) + 1j * (iq[:, 1] - 128.0)
