@@ -78,7 +78,7 @@ jobs:
       run: |
         mkdir build
         cd build
-        cmake -G "Ninja" -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} -DUSE_PYTHON=ON ..
+        cmake -G "Ninja" -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} -DUSE_PYTHON=ON -DPython_ROOT_DIR=/mingw64 ..
         ninja
 
     # - name: Setup Python
@@ -101,7 +101,7 @@ jobs:
         echo "=== .pyd file ==="
         ls -la build/src/openstint*.pyd
         echo "=== DLL dependencies of .pyd ==="
-        objdump -p build/src/openstint.cp314-win_amd64.pyd | grep "DLL Name"
+        objdump -p build/src/openstint*.pyd | grep "DLL Name"
         echo "=== expected extension suffixes ==="
         python -c "import importlib.machinery; print(importlib.machinery.EXTENSION_SUFFIXES)"
         echo "=== python DLL ==="
@@ -130,12 +130,12 @@ jobs:
         cp tools/start.bat openstint-windows-x64/
         cp -r integrations openstint-windows-x64/
 
-    - name: Add bridge executables
-      if: matrix.build_type == 'Release'
-      shell: msys2 {0}
-      run: |
-        cp dist/bridge-zround.exe openstint-windows-x64/
-        cp dist/bridge-rcgtiming.exe openstint-windows-x64/
+    # - name: Add bridge executables
+    #   if: matrix.build_type == 'Release'
+    #   shell: msys2 {0}
+    #   run: |
+    #     cp dist/bridge-zround.exe openstint-windows-x64/
+    #     cp dist/bridge-rcgtiming.exe openstint-windows-x64/
 
     - name: Add desktop executable
       if: matrix.build_type == 'Release'
