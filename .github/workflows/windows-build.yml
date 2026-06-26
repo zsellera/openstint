@@ -102,6 +102,10 @@ jobs:
         ls -la build/src/openstint*.pyd
         echo "=== DLL dependencies of .pyd ==="
         objdump -p build/src/openstint.cp314-win_amd64.pyd | grep "DLL Name"
+        echo "=== expected extension suffixes ==="
+        python -c "import importlib.machinery; print(importlib.machinery.EXTENSION_SUFFIXES)"
+        echo "=== python DLL ==="
+        ls /mingw64/bin/*python* || true
         echo "=== find_spec ==="
         python -c "import sys; sys.path.insert(0,'build/src'); import importlib.util; s=importlib.util.find_spec('openstint'); print('spec:',s); print('origin:',s.origin if s else None)" || true
         echo "=== import attempt ==="
