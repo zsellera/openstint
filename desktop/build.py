@@ -18,10 +18,6 @@ if not so_files:
     print("Build the C++ project first: mkdir build && cd build && cmake .. && make")
     sys.exit(1)
 
-datas = []
-for f in so_files:
-    datas.extend(["--add-binary", f"{f}{os.pathsep}."])
-
 cmd = [
     sys.executable, "-m", "PyInstaller",
     "--onefile",
@@ -29,7 +25,7 @@ cmd = [
     "--windowed",
     "--hidden-import=zmq",
     "--hidden-import=openstint",
-    *datas,
+    f"--paths={BUILD_SRC}",
     os.path.join(HERE, "app.py"),
 ]
 
