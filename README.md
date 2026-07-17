@@ -22,14 +22,23 @@ OpenStint is a software defined radio (SDR) based [laptiming decoder](docs/intro
 To learn more how SDR works, watch [Andreas Spiess](https://www.youtube.com/watch?v=xQVm-YTKR9s) explaining it.
 
 ## Compile from source
-You have compile it from source. Install its dependencies first:
+You have compile it from source. 
 
+Tools to compile (ubuntu/raspbian/etc.):
 ```shell
-sudo apt-get install hackrf libhackrf libhackrf-dev librtlsdr-dev libliquid libliquid-dev libzmq3-dev cppzmq-dev libfec0 libfec-dev
+sudo apt-get update
+sudo apt-get install build-essential cmake pkg-config ninja-build git
+```
+
+Install its dependencies:
+```shell
+sudo apt-get install hackrf libhackrf-dev librtlsdr-dev libliquid-dev libzmq3-dev cppzmq-dev libfec0 libfec-dev
 ```
 
 Then checkout this repo, and build with cmake/make (`Release` build enables `-O3` compiler flag, improves performance significantly):
 ```shell
+git clone https://github.com/zsellera/openstint.git
+cd openstint
 cmake -DCMAKE_BUILD_TYPE=Release .
 make
 ./src/openstint_hackrf   # or ./src/openstint_rtlsdr
