@@ -61,6 +61,7 @@ void file_rx_callback(unsigned char* buf, uint32_t len, void* /*ctx*/) {
 
 int main(int argc, char** argv) {
     int result = HACKRF_SUCCESS;
+    int streaming_status = HACKRF_TRUE;
 
     const uint64_t freq_hz = CENTER_FREQ_HZ;
     const uint32_t sample_rate = SAMPLE_RATE;
@@ -217,10 +218,14 @@ int main(int argc, char** argv) {
     std::cerr << "Streaming... stop with Ctrl-C\n";
 
     // main loop — exit when handler sets do_exit (Ctrl-C) or device stops
-    while (!do_exit && hackrf_is_streaming(device) == HACKRF_TRUE) {
+    while (!do_exit && (streaming_status = hackrf_is_streaming(device)) == HACKRF_TRUE) {
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
-        
+
         report_detections();
+    }
+    if (!do_exit && streaming_status != HACKRF_TRUE) {
+        std::fprintf(stderr, "hackrf_is_streaming() reported streaming stopped: %s (%d)\n",
+                     hackrf_error_name(static_cast<enum hackrf_error>(streaming_status)), streaming_status);
     }
 
     // stop RX
@@ -240,5 +245,5 @@ cleanup:
     hackrf_exit();
 
     std::cerr << "Done.\n";
-    return 0;
+    return do_exit ? 0 : EXIT_FAILURE; // non-zero return code on non-regular exit
 }
