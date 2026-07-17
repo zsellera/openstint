@@ -25,18 +25,23 @@ sudo apt-get upgrade -y
 
 ## 3. Install Dependencies & Compile
 
-Follow the compilation instructions in [README.md](https://github.com/zsellera/openstint/blob/master/README.md):
+Tools to compile (ubuntu/raspbian/etc.):
+```shell
+sudo apt-get install build-essential cmake pkg-config ninja-build git
+```
 
-```bash
-sudo apt-get install -y cmake build-essential libtool autoconf \
-    hackrf libhackrf-dev libliquid-dev cppzmq-dev libfec-dev \
-    python3 python3-zmq git
+Install its dependencies:
+```shell
+sudo apt-get install hackrf libhackrf-dev librtlsdr-dev libliquid-dev libzmq3-dev cppzmq-dev libfec0 libfec-dev
+```
 
-cd ~
+Then checkout this repo, and build with cmake/make (`Release` build enables `-O3` compiler flag, improves performance significantly):
+```shell
 git clone https://github.com/zsellera/openstint.git
 cd openstint
-cmake .
+cmake -DCMAKE_BUILD_TYPE=Release .
 make
+./src/openstint_rtlsdr -g 20  # or ./src/openstint_hackrf -l 20 -v 20
 ```
 
 ## 4. Install Services

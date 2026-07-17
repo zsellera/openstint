@@ -13,7 +13,7 @@ set(CMAKE_CXX_FLAGS_RELEASE "-O3")
 option(USE_HACKRF "Enable HackRF support" ON)
 option(USE_RTLSDR "Enable RTL-SDR support" ON)
 
-set(SAMPLES_PER_SYMBOL 4 CACHE STRING "HackRF samples per symbol (2, 4, or 8)")
+set(SAMPLES_PER_SYMBOL 8 CACHE STRING "HackRF samples per symbol (2 or 8)")
 
 # Base source files
 set(OPENSTINT_BASE_SOURCES

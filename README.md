@@ -21,38 +21,25 @@ OpenStint is a software defined radio (SDR) based [laptiming decoder](docs/intro
 
 To learn more how SDR works, watch [Andreas Spiess](https://www.youtube.com/watch?v=xQVm-YTKR9s) explaining it.
 
-## Compile from source
-You have compile it from source. 
+## Usage
 
-Tools to compile (ubuntu/raspbian/etc.):
 ```shell
-sudo apt-get update
-sudo apt-get install build-essential cmake pkg-config ninja-build git
-```
-
-Install its dependencies:
-```shell
-sudo apt-get install hackrf libhackrf-dev librtlsdr-dev libliquid-dev libzmq3-dev cppzmq-dev libfec0 libfec-dev
-```
-
-Then checkout this repo, and build with cmake/make (`Release` build enables `-O3` compiler flag, improves performance significantly):
-```shell
-git clone https://github.com/zsellera/openstint.git
-cd openstint
-cmake -DCMAKE_BUILD_TYPE=Release .
-make
-./src/openstint_hackrf   # or ./src/openstint_rtlsdr
+./src/openstint_rtlsdr -g 20   # or ./src/openstint_hackrf -l 20 -v 20
 ```
 
 Vehicle passings are printed to `stdout` and published with ZeroMQ at `:5556`. The easiest method for testing with real transponders is with a *near-field magnetic probe* (sub-$10 stuff, search on ebay/aliexpress or see [Dave Jones DIY one](https://youtu.be/2xy3Hm1_ZqI?si=vmh87UB20cV0W4xt)).
+
+## Compile from source
+
+[Full Raspberry/Ubuntu tutorial here](docs/setup-tutorial-raspberry.md).
+
+This project use [libhackrf](https://github.com/greatscottgadgets/hackrf/), [rtl-sdr v4 drivers](https://github.com/rtlsdrblog/rtl-sdr-blog), [liquidsdr](https://liquidsdr.org/), [ZeroMQ/cppzmq](https://github.com/zeromq/cppzmq) and [libfec](https://github.com/fblomqvi/libfec) as dependencies, all of which you have to install. 
 
 To use goodies in the `integrations/` directory, `sudo apt-get install python3 python3-zmq` as well.
 
 Note on Mac: we can't `brew install libfec`, compile and install it [from source](https://github.com/fblomqvi/libfec).
 
-If this is your first rodeo, `sudo apt-get install cmake build-essentials libtool autoconf` as well.
-
-HackRF One users: there is a build flag `SAMPLES_PER_SYMBOL`, default to `4`, resulting in 5 MSPS sampling rate. Better reception is achievable by setting it to `8` (10 MSPS) at the cost of higher CPU utilization. On resource-constrained environment, lower it to `2` (2.5 MSPS: lower CPU-usage, shittier reception). RTL-SDR maxes out at the required minimum of 2.5 MSPS (`SAMPLES_PER_SYMBOL=2`), there is no way to fine-tune that.
+HackRF One users: there is a build flag `SAMPLES_PER_SYMBOL`, default to `8`, resulting in 10 MSPS sampling rate and slightly larger dynamic range than of RTL-SDR. Lower CPU consumption is achievable by setting it to `2` (2.5 MSPS). Setting to `4` is not recommended (bad performance). RTL-SDR maxes out at the required minimum of 2.5 MSPS (`SAMPLES_PER_SYMBOL=2`), there is no way to fine-tune that.
 
 ## Integrations
 
