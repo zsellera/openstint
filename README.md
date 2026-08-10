@@ -13,7 +13,7 @@ OpenStint is a software defined radio (SDR) based [laptiming decoder](docs/intro
 * :car: Passing speed detection (based on signal strength)
 * :brain: Adaptive filters enchance reception quality
 
-**Download:** [Windows users](docs/setup-tutorial-windows.md) can download precompiled binaries; the rest of us have to compile from source.
+**Download:** [Windows users](docs/setup-tutorial-windows.md) can download precompiled binaries; [Raspberry Pi OS (64-bit)](docs/setup-tutorial-raspberry.md) users can `apt install openstint`; on other platforms, compile from source.
 
 **Tutorials:** [cheapest setup with rtl-sdr](docs/setup-simple-rtlsdr.md) | [track setup tutorial](docs/setup-tutorial.md) | [standalone decoder on a raspberry pi](docs/setup-tutorial-raspberry.md)
 
