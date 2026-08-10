@@ -2,6 +2,9 @@ build/
 tmp/
 __pycache__/
 
+# packaging output (packaging/build-deb.sh)
+dist/*.deb
+
 # Prerequisites
 *.d
 

@@ -1,0 +1,354 @@
+name: Build .deb
+
+# Manual only. This is an arm64 packaging build for Raspberry Pi; the
+# per-push x86 compile matrix lives in ubuntu-build.yml and stays there.
+on:
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: 'Publish the .deb to the apt repository'
+        type: boolean
+        default: false
+      build_number:
+        description: 'Build number within today (digits only). Bump for a second build on the same day.'
+        type: string
+        default: '0'
+
+env:
+  # Bump to update the packaging tool. Release list:
+  # https://github.com/goreleaser/nfpm/releases
+  NFPM_VERSION: '2.43.0'
+
+jobs:
+  build:
+    name: Build arm64 package
+    runs-on: ubuntu-24.04-arm
+    # Build in the same Debian release the target Pi runs
+    container: debian:trixie
+
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      deb_name: ${{ steps.package.outputs.deb_name }}
+
+    steps:
+      # Before checkout: the bare container has no git, and actions/checkout
+      # would silently fall back to a tarball download without it.
+      - name: Install build dependencies
+        run: |
+          set -eux
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            build-essential \
+            cmake \
+            pkg-config \
+            ninja-build \
+            git \
+            ca-certificates \
+            curl \
+            dpkg-dev \
+            libzmq3-dev \
+            cppzmq-dev \
+            libhackrf-dev \
+            librtlsdr-dev \
+            libliquid-dev \
+            libfec0 \
+            libfec-dev
+
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Compute version
+        id: version
+        env:
+          BUILD_NUMBER: ${{ inputs.build_number }}
+        run: |
+          set -eu
+          if ! printf '%s' "$BUILD_NUMBER" | grep -Eq '^[0-9]+$'; then
+            echo "::error::build_number must be digits only, got '${BUILD_NUMBER}'"
+            exit 1
+          fi
+          # dpkg compares version chunks alternately as text and as integers,
+          # so 0.260810.0 < 0.260810.1 < 0.260811.0, and the year rollover to
+          # 0.270101.0 is still ordered.
+          VERSION="0.$(date -u +%y%m%d).${BUILD_NUMBER}"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "Building version ${VERSION}"
+
+      - name: Install nfpm
+        run: |
+          set -eux
+          curl -sSfL -o /tmp/nfpm.deb \
+            "https://github.com/goreleaser/nfpm/releases/download/v${NFPM_VERSION}/nfpm_${NFPM_VERSION}_arm64.deb"
+          apt-get install -y /tmp/nfpm.deb
+          nfpm --version
+
+      - name: Build OpenStint
+        run: |
+          set -eux
+          cmake -G Ninja -DCMAKE_BUILD_TYPE=Release -B build .
+          ninja -C build
+          ldd build/src/openstint_rtlsdr
+          ldd build/src/openstint_hackrf
+
+      - name: Package
+        id: package
+        env:
+          VERSION: ${{ steps.version.outputs.version }}
+        run: |
+          set -eu
+          packaging/build-deb.sh
+          DEB_NAME="openstint_${VERSION}_arm64.deb"
+          test -f "dist/${DEB_NAME}"
+          echo "deb_name=${DEB_NAME}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload package artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: openstint-deb
+          path: dist/*.deb
+          if-no-files-found: error
+          retention-days: 30
+
+  verify:
+    name: Install in a clean container
+    needs: build
+    runs-on: ubuntu-24.04-arm
+    # Clean image on purpose, and the same release as the target Pi. The build
+    # container already has every library installed, so nothing there can catch
+    # a missing depends: entry -- this job is the only step that actually
+    # proves the computed list is complete AND that every name in it resolves
+    # on the release the package is installed on.
+    container: debian:trixie-slim
+
+    steps:
+      - name: Download package artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: openstint-deb
+          path: dist
+
+      - name: Install the package
+        run: |
+          set -eux
+          apt-get update
+          # Resolves and pulls the computed depends: from Debian proper.
+          apt-get install -y ./dist/openstint_*.deb
+
+      - name: Verify the binaries run
+        run: |
+          set -eu
+          # -h exits non-zero (it is the usage/error path), so assert on the
+          # output instead. Reaching the usage text at all proves the dynamic
+          # linker resolved every NEEDED library, which is the real check.
+          for bin in openstint_rtlsdr openstint_hackrf; do
+            out="$("$bin" -h 2>&1 || true)"
+            printf '%s\n' "$out"
+            if ! printf '%s\n' "$out" | grep -q '^Usage: '; then
+              echo "::error::${bin} did not produce usage output -- missing runtime dependency?"
+              exit 1
+            fi
+          done
+
+      - name: Verify packaged files landed
+        run: |
+          set -eux
+          # The maintainer scripts are guarded on systemctl, which is absent
+          # here -- that this install succeeded at all is the guard's test.
+          test -f /lib/systemd/system/openstint.service
+          test -f /lib/systemd/system/bridge-zround.service
+          test -f /etc/openstint.conf
+          test -f /usr/share/doc/openstint/copyright
+          test -f /usr/share/openstint/integrations/bridge-zround.py
+          # What a curious user actually reads.
+          apt-cache show openstint | grep -E '^(Package|Version|Homepage|Depends):'
+
+  publish:
+    name: Publish to apt repository
+    needs: [build, verify]
+    if: ${{ inputs.publish }}
+    # Nothing is compiled here, only moved.
+    runs-on: ubuntu-latest
+    # Scopes the OIDC subject and is where the required-reviewer rule hangs.
+    environment: apt-repo
+
+    # Index generation is a read-modify-write of the whole repository, so two
+    # concurrent publishes race and one loses its .deb from Packages.
+    #
+    # Note this does NOT span repositories: GitHub concurrency groups are
+    # scoped to one repository, and this bucket is shared with another
+    # product's publish job. That is handled by the operator running the two
+    # by hand, deliberately, rather than by a distributed lock. The
+    # pre-write assertion below is the safeguard that matters.
+    concurrency:
+      group: apt-publish
+      cancel-in-progress: false
+
+    permissions:
+      id-token: write
+      contents: read
+
+    env:
+      VERSION: ${{ needs.build.outputs.version }}
+      DEB_NAME: ${{ needs.build.outputs.deb_name }}
+      APT_BUCKET: ${{ vars.APT_BUCKET }}
+      APT_DISTRIBUTION_ID: ${{ vars.APT_DISTRIBUTION_ID }}
+
+    steps:
+      - name: Check repository variables are set
+        run: |
+          set -eu
+          missing=0
+          for v in APT_AWS_REGION APT_PUBLISH_ROLE_ARN APT_BUCKET APT_DISTRIBUTION_ID; do
+            eval "val=\${$v:-}"
+            if [ -z "$val" ]; then
+              echo "::error::repository variable ${v} is not set"
+              missing=1
+            fi
+          done
+          [ "$missing" -eq 0 ]
+        env:
+          APT_AWS_REGION: ${{ vars.APT_AWS_REGION }}
+          APT_PUBLISH_ROLE_ARN: ${{ vars.APT_PUBLISH_ROLE_ARN }}
+
+      - name: Install apt-ftparchive
+        run: |
+          set -eux
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends apt-utils
+
+      - name: Download package artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: openstint-deb
+          path: dist
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ vars.APT_PUBLISH_ROLE_ARN }}
+          aws-region: ${{ vars.APT_AWS_REGION }}
+
+      - name: Assert the role was assumed
+        # Explicit, because a broken role assumption misread as a bucket
+        # permission problem costs an hour.
+        run: aws sts get-caller-identity
+
+      - name: Sync the existing pool
+        run: |
+          set -eux
+          mkdir -p "${RUNNER_TEMP}/apt"
+          # The whole pool is needed: apt-ftparchive hashes and sizes every
+          # .deb it indexes. The indices are excluded because they are about
+          # to be regenerated. An empty bucket needs no bootstrap -- syncing
+          # over an empty prefix copies nothing and exits 0.
+          aws s3 sync "s3://${APT_BUCKET}/apt/" "${RUNNER_TEMP}/apt/" \
+            --exclude "Packages*" \
+            --exclude "Release"
+          ls -l "${RUNNER_TEMP}/apt/"
+
+      - name: Regenerate the index
+        run: |
+          set -eux
+          cp "dist/${DEB_NAME}" "${RUNNER_TEMP}/apt/"
+          cd "${RUNNER_TEMP}/apt"
+
+          # Flat repository: apt fetches exact paths, so no dists/+pool/ and
+          # no directory listing. Strip the leading ./ from Filename so the
+          # paths read cleanly against the source line's base URL.
+          apt-ftparchive packages . \
+            | sed 's|^Filename: \./|Filename: |' > "${RUNNER_TEMP}/Packages"
+          mv "${RUNNER_TEMP}/Packages" Packages
+          gzip -9 -k -f Packages
+
+          # These describe the REPOSITORY, not this package, and the bucket is
+          # shared with another product whose publisher regenerates the same
+          # file. apt refuses to update when they change:
+          #   E: Repository '...' changed its 'Origin' value from 'LapBeeps' to ...
+          # so two workflows stamping different values would break apt update
+          # on every client, in both directions, on every alternating publish.
+          # These must stay byte-identical to what the other publisher emits.
+          # Package-level identity lives in Package:/Homepage:, not here.
+          apt-ftparchive release . \
+            -o APT::FTPArchive::Release::Origin=LapBeeps \
+            -o APT::FTPArchive::Release::Label=LapBeeps \
+            -o APT::FTPArchive::Release::Suite=stable \
+            -o APT::FTPArchive::Release::Architectures=arm64 \
+            > "${RUNNER_TEMP}/Release"
+          mv "${RUNNER_TEMP}/Release" Release
+
+          cat Release
+
+      - name: Assert the index is sane before overwriting the live one
+        run: |
+          set -eu
+          cd "${RUNNER_TEMP}/apt"
+          pkg_count="$(grep -c '^Package: ' Packages || true)"
+          deb_count="$(find . -maxdepth 1 -name '*.deb' | wc -l)"
+          echo "index lists ${pkg_count} package(s), ${deb_count} .deb file(s) on disk"
+
+          # apt-ftparchive exits 0 on an empty directory, and this index is
+          # about to overwrite the live one that every client reads.
+          if [ "$pkg_count" -eq 0 ]; then
+            echo "::error::refusing to publish an empty Packages index"
+            exit 1
+          fi
+          if [ "$pkg_count" -ne "$deb_count" ]; then
+            echo "::error::Packages lists ${pkg_count} entries but ${deb_count} .deb files are present"
+            exit 1
+          fi
+          grep -q "^Filename: ${DEB_NAME}\$" Packages || {
+            echo "::error::${DEB_NAME} is not in the generated index"
+            exit 1
+          }
+
+      - name: Upload the package
+        # The .deb goes up FIRST, the index second. S3 is read-after-write
+        # consistent, so ordering alone suffices -- no propagation wait. This
+        # avoids publishing an index naming a file that is not there yet.
+        # The version is in the filename, so the object is immutable.
+        run: |
+          set -eux
+          aws s3 cp "${RUNNER_TEMP}/apt/${DEB_NAME}" "s3://${APT_BUCKET}/apt/${DEB_NAME}" \
+            --content-type 'application/vnd.debian.binary-package' \
+            --cache-control 'public, max-age=31536000, immutable'
+
+      - name: Upload the index
+        # Rewritten on every publish, so it must never be cached.
+        run: |
+          set -eux
+          cd "${RUNNER_TEMP}/apt"
+          aws s3 cp Packages "s3://${APT_BUCKET}/apt/Packages" \
+            --content-type 'text/plain' --cache-control 'no-cache'
+          aws s3 cp Packages.gz "s3://${APT_BUCKET}/apt/Packages.gz" \
+            --content-type 'application/gzip' --cache-control 'no-cache'
+          aws s3 cp Release "s3://${APT_BUCKET}/apt/Release" \
+            --content-type 'text/plain' --cache-control 'no-cache'
+
+      - name: Invalidate the CDN
+        # The .deb is in this list because it was uploaded immutable with a
+        # one-year max-age: if a version were ever republished, the edge would
+        # keep serving the old bytes while Packages already names the new
+        # hash, giving every client a Hash Sum mismatch.
+        #
+        # This only reaches the CloudFront edge. It cannot touch a client or
+        # an intermediate proxy that already cached the object, and
+        # 'immutable' tells those not to revalidate even on a forced refresh.
+        # It is a safety net, not a fix. The actual rule is that a version is
+        # published exactly once -- that is what build_number is for.
+        run: |
+          set -eux
+          aws cloudfront create-invalidation \
+            --distribution-id "${APT_DISTRIBUTION_ID}" \
+            --paths "/apt/Release" "/apt/Packages" "/apt/Packages.gz" "/apt/${DEB_NAME}"
+
+      - name: Summary
+        run: |
+          {
+            echo "### Published \`openstint\` ${VERSION}"
+            echo
+            echo '```bash'
+            echo "sudo apt update && sudo apt install openstint"
+            echo "# pin to this build:"
+            echo "sudo apt install openstint=${VERSION}"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"

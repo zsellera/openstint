@@ -1,0 +1,74 @@
+# Template for the nfpm config. packaging/build-deb.sh substitutes the version
+# and architecture markers below, and replaces the lone dependency marker with
+# the list computed by dpkg-shlibdeps. Do not run nfpm against this file
+# directly, and do not write a marker token into a comment -- the substitution
+# is textual.
+#
+# Docs: https://nfpm.goreleaser.com/configuration/
+name: openstint
+arch: "@ARCH@"
+platform: linux
+version: "@VERSION@"
+# Pass the version through verbatim. It is 0.{YYMMDD}.{build}, which happens to
+# be valid semver, but nothing here wants semver normalisation.
+version_schema: none
+section: misc
+priority: optional
+maintainer: "Attila Zseller <zsellera@gmail.com>"
+description: |
+  Open source RC laptiming decoder for SDR receivers.
+  OpenStint decodes RC4/RC3 transponder passings from an RTL-SDR or HackRF
+  One and publishes them over ZeroMQ, so timing software such as ZRound or
+  RCGTiming can consume them. Runs on a Raspberry Pi 3B+ or newer.
+vendor: "OpenStint"
+homepage: "https://github.com/zsellera/openstint"
+license: "GPL-3.0-or-later"
+
+depends:
+@DEPENDS@
+
+contents:
+  - src: @BUILDDIR@/src/openstint_rtlsdr
+    dst: /usr/bin/openstint_rtlsdr
+    file_info:
+      mode: 0755
+
+  - src: @BUILDDIR@/src/openstint_hackrf
+    dst: /usr/bin/openstint_hackrf
+    file_info:
+      mode: 0755
+
+  # The ZeroMQ bridges. Shipped for all timing back-ends; only the unit for
+  # the one you use gets enabled.
+  - src: integrations/*.py
+    dst: /usr/share/openstint/integrations/
+    file_info:
+      mode: 0755
+
+  - src: packaging/openstint.service
+    dst: /lib/systemd/system/openstint.service
+    file_info:
+      mode: 0644
+
+  - src: packaging/bridge-zround.service
+    dst: /lib/systemd/system/bridge-zround.service
+    file_info:
+      mode: 0644
+
+  # noreplace: an upgrade must not overwrite locally edited arguments.
+  - src: packaging/openstint.conf
+    dst: /etc/openstint.conf
+    type: "config|noreplace"
+    file_info:
+      mode: 0644
+
+  # Debian policy requires every package to ship its copyright.
+  - src: LICENSE
+    dst: /usr/share/doc/openstint/copyright
+    file_info:
+      mode: 0644
+
+scripts:
+  postinstall: packaging/scripts/postinstall.sh
+  preremove: packaging/scripts/preremove.sh
+  postremove: packaging/scripts/postremove.sh

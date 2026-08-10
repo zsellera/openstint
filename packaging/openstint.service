@@ -1,0 +1,35 @@
+[Unit]
+Description=OpenStint Laptiming Decoder
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+; The 'openstint' system user is created by the package postinstall script.
+; plugdev is the group the udev rules shipped by librtlsdr0 / libhackrf0
+; assign the SDR device nodes to, and is what grants USB access here.
+User=openstint
+SupplementaryGroups=plugdev
+; Arguments live in /etc/openstint.conf so that a package upgrade cannot
+; clobber local settings. $OPENSTINT_ARGS must stay unquoted and unbraced:
+; systemd word-splits $VAR but does not split ${VAR}.
+EnvironmentFile=/etc/openstint.conf
+StateDirectory=openstint
+WorkingDirectory=/var/lib/openstint
+ExecStart=/usr/bin/openstint_rtlsdr $OPENSTINT_ARGS
+; ExecStart=/usr/bin/openstint_hackrf $OPENSTINT_ARGS
+Restart=always
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+; Sample capture is a hard-real-time workload: a scheduling delay is a dropped
+; buffer. systemd applies these as root before dropping to User=, so they work
+; with a non-root service user.
+CPUSchedulingPolicy=fifo
+CPUSchedulingPriority=70
+IOSchedulingClass=realtime
+IOSchedulingPriority=0
+Nice=-10
+
+[Install]
+WantedBy=multi-user.target
