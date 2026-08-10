@@ -142,7 +142,3 @@ sudo systemctl restart openstint.service
 ```
 
 See [README.md](https://github.com/zsellera/openstint/blob/master/README.md) for available command-line arguments.
-
-### Building a .deb locally
-
-See [packaging/README.md](../packaging/README.md).
