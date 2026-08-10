@@ -68,6 +68,17 @@ contents:
     file_info:
       mode: 0644
 
+  # The RC4 registry, shipped as a directory so dpkg tracks it. Group 'users'
+  # (gid 100, from base-passwd) so real logins can read and write it; the
+  # service reaches it via SupplementaryGroups=users. postinstall re-applies
+  # the setgid bit, which does not survive every packaging path reliably.
+  - dst: /var/lib/openstint
+    type: dir
+    file_info:
+      mode: 0775
+      owner: root
+      group: users
+
 scripts:
   postinstall: packaging/scripts/postinstall.sh
   preremove: packaging/scripts/preremove.sh

@@ -5,8 +5,9 @@ Requires=openstint.service
 
 [Service]
 Type=simple
-; Created by the package postinstall script.
-User=openstint
+; Same reasoning as openstint.service. The bridge keeps no state and talks to
+; the decoder over TCP, so it needs no shared UID with it.
+DynamicUser=yes
 WorkingDirectory=/usr/share/openstint/integrations
 ExecStart=/usr/bin/python3 /usr/share/openstint/integrations/bridge-zround.py
 Restart=always

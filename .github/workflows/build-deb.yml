@@ -162,6 +162,56 @@ jobs:
           # What a curious user actually reads.
           apt-cache show openstint | grep -E '^(Package|Version|Homepage|Depends):'
 
+      - name: Verify postinstall left no account behind
+        run: |
+          set -eux
+          # The units use DynamicUser=yes, so systemd allocates a transient
+          # UID at start and the package creates no account at all. Assert
+          # that, so a future change reintroducing static-user management --
+          # and with it the adduser-missing failure -- shows up here.
+          ! getent passwd openstint
+          ! getent group openstint
+          # SupplementaryGroups= refers to this by name; a missing group is a
+          # start failure on the Pi, which this container cannot otherwise see.
+          getent group plugdev
+          getent group users
+          # The unit references these by name; a missing group is a start
+          # failure on the Pi, which this container cannot otherwise see.
+          grep -q '^SupplementaryGroups=plugdev users$' /lib/systemd/system/openstint.service
+          grep -q '^DynamicUser=yes$' /lib/systemd/system/openstint.service
+
+      - name: Verify the RC4 registry is group-writable
+        run: |
+          set -eux
+          # Shipped in the .deb, so it exists without systemd having run.
+          test -d /var/lib/openstint
+          # root:users, setgid, group-writable. The setgid bit is applied by
+          # postinstall because it does not survive packaging reliably --
+          # without it, files the service creates carry the transient
+          # DynamicUser group and real logins cannot read them.
+          [ "$(stat -c '%U:%G' /var/lib/openstint)" = "root:users" ]
+          [ "$(stat -c '%a' /var/lib/openstint)" = "2775" ]
+          # ProtectSystem=strict (implied by DynamicUser) makes /var
+          # read-only, so the unit must grant write access back explicitly.
+          grep -q '^ReadWritePaths=/var/lib/openstint$' /lib/systemd/system/openstint.service
+          grep -q '^UMask=0002$' /lib/systemd/system/openstint.service
+          # StateDirectory= would relocate it under /var/lib/private (0700
+          # root) and silently undo all of the above.
+          ! grep -q '^StateDirectory=' /lib/systemd/system/openstint.service
+
+      - name: Verify remove and purge are clean
+        run: |
+          set -eux
+          # Exercises prerm/postrm the same way a user would. Both are guarded
+          # on systemctl and must survive its absence. Note the state
+          # directory is never created here: systemd makes it at service
+          # start, and systemd does not run in this container.
+          apt-get remove -y openstint
+          apt-get purge -y openstint
+          test ! -e /var/lib/openstint
+          test ! -e /var/lib/private/openstint
+          getent group plugdev         # shared, must survive purge
+
   publish:
     name: Publish to apt repository
     needs: [build, verify]

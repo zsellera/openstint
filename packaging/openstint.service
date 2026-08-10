@@ -5,17 +5,42 @@ Wants=network-online.target
 
 [Service]
 Type=simple
-; The 'openstint' system user is created by the package postinstall script.
-; plugdev is the group the udev rules shipped by librtlsdr0 / libhackrf0
-; assign the SDR device nodes to, and is what grants USB access here.
-User=openstint
-SupplementaryGroups=plugdev
+; No packaged account. systemd allocates a transient UID/GID at start, so the
+; .deb never has to create (or clean up) a user, and there is no 'pi' account
+; assumption. StateDirectory below is re-chowned to the new UID on every
+; start, so the RC4 registry survives restarts and reboots regardless.
+DynamicUser=yes
+; USB access. The SDR device nodes are mode 0660 and group-owned by plugdev,
+; so group membership is required -- not decorative. All three upstream rule
+; sets agree, and none use TAG+="uaccess" (which grants only to the logged-in
+; seat user via ACL and would leave a system service with no access at all):
+;   hackrf/host/libhackrf/53-hackrf.rules   MODE="660",  GROUP="plugdev"
+;   osmocom/rtl-sdr rtl-sdr.rules           MODE="0660", GROUP="plugdev"
+;   rtlsdrblog/rtl-sdr-blog (v4) rtl-sdr.rules  MODE="0660", GROUP="plugdev"
+; If the service ever reports LIBUSB_ERROR_ACCESS, check the rules actually
+; installed on the target -- a distro may patch them:
+;   grep -rh -e GROUP -e MODE -e uaccess /lib/udev/rules.d/ | grep -i -e rtl -e hackrf
+; 'users' (gid 100) makes the RC4 registry reachable by real logins. The
+; default Raspberry Pi OS account is already a member.
+SupplementaryGroups=plugdev users
 ; Arguments live in /etc/openstint.conf so that a package upgrade cannot
 ; clobber local settings. $OPENSTINT_ARGS must stay unquoted and unbraced:
 ; systemd word-splits $VAR but does not split ${VAR}.
 EnvironmentFile=/etc/openstint.conf
-StateDirectory=openstint
+; Deliberately NOT StateDirectory=openstint. Under DynamicUser= systemd puts
+; state in /var/lib/private/openstint, and /var/lib/private is hardcoded
+; 0700 root -- no regular user can traverse it, whatever the directory's own
+; mode is. The registry is meant to be readable and writable by real logins,
+; so the package ships /var/lib/openstint as root:users 2775 instead.
+;
+; DynamicUser= implies ProtectSystem=strict, which makes /var read-only, so
+; the write access has to be granted back explicitly.
+ReadWritePaths=/var/lib/openstint
 WorkingDirectory=/var/lib/openstint
+; The setgid bit on the directory makes new files inherit group 'users';
+; UMask makes them group-writable rather than group-readable. Both are needed
+; for a real user to edit the registry, not just list it.
+UMask=0002
 ExecStart=/usr/bin/openstint_rtlsdr $OPENSTINT_ARGS
 ; ExecStart=/usr/bin/openstint_hackrf $OPENSTINT_ARGS
 Restart=always
@@ -23,8 +48,8 @@ RestartSec=5
 StandardOutput=journal
 StandardError=journal
 ; Sample capture is a hard-real-time workload: a scheduling delay is a dropped
-; buffer. systemd applies these as root before dropping to User=, so they work
-; with a non-root service user.
+; buffer. systemd applies these as root before dropping privileges, so they
+; are unaffected by DynamicUser and by the NoNewPrivileges= it implies.
 CPUSchedulingPolicy=fifo
 CPUSchedulingPriority=70
 IOSchedulingClass=realtime
