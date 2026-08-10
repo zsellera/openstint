@@ -53,18 +53,25 @@ uint32_t concat_bits32(uint8_t *soft_bits) {
 
 int preamble_pos(uint32_t sof, uint16_t preamble) {
     const int preamble_size = 16;
+    // modify if fseq_syms is changed; the preamble will be on an offset, defined by
+    // the FSEq filter and it's implementation.
+    const int pos_max = 4;
     const uint32_t mask = (1 << preamble_size) - 1;
 
     uint32_t pp = static_cast<uint32_t>(preamble);
-    for (int i=0; i<=(32-preamble_size); i++) {
-        uint32_t result = (sof & mask) ^ pp;
-        if (std::popcount(result) <= PREAMBLE_MAX_BIT_ERRORS) {
-            return 32 - preamble_size - i;
-        } else {
-            sof >>= 1;
+    uint32_t shifted = sof >> (32 - preamble_size - pos_max);
+    int best_pos = -1;
+    int best_errors = PREAMBLE_MAX_BIT_ERRORS + 1;
+    for (int pos = pos_max; pos >= 0; pos--) {
+        uint32_t result = (shifted & mask) ^ pp;
+        int errors = std::popcount(result);
+        if (errors < best_errors) {
+            best_errors = errors;
+            best_pos = pos;
         }
+        shifted >>= 1;
     }
-    return -1;
+    return (best_errors <= PREAMBLE_MAX_BIT_ERRORS) ? best_pos : -1;
 }
 
 const uint8_t* Frame::bits() {
