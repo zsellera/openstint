@@ -37,11 +37,11 @@ jobs:
         run: |
           set -eux
           apt-get update
-          # rtl-sdr, hackrf and libfec are built from pinned source by
+          # rtl-sdr and hackrf are built from pinned source by
           # cmake/Dependencies.cmake and linked statically, so no -dev package
           # for them. git is needed at configure time now, not just for
           # checkout: FetchContent clones the pinned revisions. liquid-dsp,
-          # libusb and ZeroMQ remain system libraries.
+          # libfec, libusb and ZeroMQ remain system libraries.
           apt-get install -y --no-install-recommends \
             build-essential \
             cmake \
@@ -54,7 +54,8 @@ jobs:
             libusb-1.0-0-dev \
             libzmq3-dev \
             cppzmq-dev \
-            libliquid-dev
+            libliquid-dev \
+            libfec-dev
 
       - name: Checkout code
         uses: actions/checkout@v4
@@ -92,24 +93,29 @@ jobs:
           ldd build/src/openstint_rtlsdr
           ldd build/src/openstint_hackrf
 
-      - name: Verify the SDR and DSP libraries are linked statically
+      - name: Verify the SDR libraries are linked statically
         run: |
           set -eu
-          # If any of these reappears as a NEEDED entry the binary is back to
-          # whatever Debian ships -- 2.0.2 today, with no RTL-SDR Blog V4L
+          # If either of these reappears as a NEEDED entry the binary is back
+          # to whatever Debian ships -- 2.0.2 today, with no RTL-SDR Blog V4L
           # support -- and the pin in cmake/Dependencies.cmake stops meaning
           # anything. It fails silently at runtime, so it has to fail loudly
-          # here.
+          # here. liquid and fec are system libraries and belong in NEEDED.
+          #
+          # readelf -d, not ldd: ldd prints the whole transitive closure, which
+          # is "what gets loaded" and not "what was this linked against".
+          # DT_NEEDED is the only thing that describes this binary's own link.
           for bin in openstint_rtlsdr openstint_hackrf; do
-            needed="$(ldd "build/src/${bin}")"
-            for lib in librtlsdr libhackrf libfec; do
-              if printf '%s\n' "$needed" | grep -q "${lib}"; then
+            needed="$(readelf -d "build/src/${bin}" |
+                      sed -n 's/.*(NEEDED).*\[\(.*\)\]/\1/p')"
+            for lib in librtlsdr libhackrf; do
+              if printf '%s\n' "$needed" | grep -q "^${lib}"; then
                 echo "::error::${bin} dynamically links ${lib}; it must be vendored"
                 exit 1
               fi
             done
           done
-          echo "ok: no system SDR/DSP library is linked dynamically"
+          echo "ok: no system SDR library is linked dynamically"
 
       - name: Package
         id: package

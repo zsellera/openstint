@@ -101,18 +101,20 @@ sudo apt-get install build-essential cmake pkg-config ninja-build git
 
 Install its dependencies:
 ```shell
-sudo apt-get install libusb-1.0-0-dev libzmq3-dev cppzmq-dev libliquid-dev
+sudo apt-get install libusb-1.0-0-dev libzmq3-dev cppzmq-dev libliquid-dev libfec-dev
 ```
 
-CMake fetches rtl-sdr, hackrf and libfec: each at a pinned
-revision and are linked statically.
+CMake fetches rtl-sdr and hackrf itself, each at a pinned revision, and links
+them statically. That is deliberate: hardware support lives inside the driver,
+so the version Debian ships decides which dongles work. The libraries above are
+used as packaged.
 
 Install these to have the udev rules and device-specific CLI:
 ```shell
 sudo apt-get install rtl-sdr hackrf
 ```
 
-Then checkout this repo, and build with cmake/ninja (`Release` build enables `-O3` compiler flag, improves performance significantly). The first build also compiles the three vendored libraries, so give it a few minutes on a Pi:
+Then checkout this repo, and build with cmake/ninja (`Release` build enables `-O3` compiler flag, improves performance significantly). The first build also compiles the two vendored libraries, so give it a few minutes on a Pi:
 ```shell
 git clone https://github.com/zsellera/openstint.git
 cd openstint

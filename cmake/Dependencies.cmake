@@ -1,11 +1,11 @@
 # ---------------------------------------------------------------------------
 # Vendored third-party libraries.
 #
-# rtl-sdr, libhackrf and libfec are built from source and linked statically
-# into the decoders on every platform, pinned to the revisions below. The
-# alternative -- whatever each package manager happens to ship -- produced
-# materially different builds of the same decoder, with librtlsdr ranging from
-# 0.6.0 to 2.0.2 depending on the distribution release.
+# rtl-sdr and libhackrf are built from source and linked statically into the
+# decoders on every platform, pinned to the revisions below. The alternative --
+# whatever each package manager happens to ship -- produced materially
+# different builds of the same decoder, with librtlsdr ranging from 0.6.0 to
+# 2.0.2 depending on the distribution release.
 #
 # For rtl-sdr this is not tidiness, it is the only way to control which driver
 # runs. Hardware support lives entirely inside the library: v2.0.3 added the
@@ -15,11 +15,12 @@
 # simply does not see the dongle -- no link error, no runtime error, and no
 # rtlsdr_get_version() in the public API to assert on.
 #
-# liquid-dsp, libusb-1.0 and ZeroMQ stay system libraries on purpose. None of
-# them carries hardware knowledge, all three are widely packaged, and libusb in
-# particular is the kernel-facing USB backend and should match the host. See
-# the liquid-dsp block below for why it is not vendored despite being the
-# heaviest of the three.
+# liquid-dsp, libfec, libusb-1.0 and ZeroMQ stay system libraries on purpose.
+# None of them carries hardware knowledge, so a version difference costs
+# accuracy at worst, never "does not see the dongle", and libusb in particular
+# is the kernel-facing USB backend and should match the host. Debian and Ubuntu
+# package all four; Homebrew packages all but libfec, which macOS builders
+# install from source (see README.md).
 #
 # The .deb still declares runtime dependencies on rtl-sdr and hackrf even
 # though it no longer links them -- see packaging/build-deb.sh for why.
@@ -31,8 +32,6 @@ include(FetchContent)
 # Bump deliberately: these decide which hardware the shipped binaries support.
 set(OPENSTINT_RTLSDR_TAG "v2.0.3")      # 2026-08-11, adds RTL-SDR Blog V4L
 set(OPENSTINT_HACKRF_TAG "v2026.01.3")  # 2026-01-30
-# quiet/libfec publishes no tags; this is the tip of master.
-set(OPENSTINT_LIBFEC_TAG "9750ca0a6d0a786b506e44692776b541f90daa91")
 
 # FetchContent brings its dependencies in as subdirectories, and IMPORTED
 # targets are only visible in the directory that created them and below.
@@ -157,38 +156,17 @@ add_library(openstint::liquid ALIAS openstint_liquid)
 # ---------------------------------------------------------------------------
 # libfec
 # ---------------------------------------------------------------------------
-# Populated but not added to the build: SOURCE_SUBDIR names a directory that
-# does not exist, which tells FetchContent_MakeAvailable to skip
-# add_subdirectory(). Three reasons not to use upstream's CMakeLists.txt:
-#
-#   - its library target is called `fec`, and so is one of liquid-dsp's object
-#     libraries. Target names are global, so the two cannot coexist.
-#   - it declares cmake_minimum_required(VERSION 3.0), which CMake 4 rejects
-#     outright. Homebrew and MSYS2 both ship CMake 4 now.
-#   - it uses directory-scoped include_directories(), so fec.h never reaches
-#     a consumer, and it builds eight test executables we do not want.
-#
-# Only the K=9 r=1/2 Viterbi decoder is used (transponder.cpp), so only the
-# four files that reach it are compiled. Everything SIMD in libfec is gated on
-# __i386__ or __VEC__ and compiles to nothing on x86-64, arm64 or MinGW --
-# cpu_mode_unknown.c is what upstream's own build selects on those
-# architectures too. The result is the same portable C decoder everywhere.
-FetchContent_Declare(libfec
-    GIT_REPOSITORY https://github.com/quiet/libfec.git
-    GIT_TAG        ${OPENSTINT_LIBFEC_TAG}
-    SOURCE_SUBDIR  openstint-builds-this-itself
-)
-FetchContent_MakeAvailable(libfec)
+# Not vendored. Only the K=9 r=1/2 Viterbi decoder is used (transponder.cpp),
+# an API that has not changed in twenty years, so the packaged copy is as good
+# as a pinned one. Debian and Ubuntu ship it as libfec-dev; Homebrew has no
+# formula, so macOS builders install quiet/libfec by hand and Windows CI
+# compiles it -- see README.md and .github/workflows/windows-build.yml.
+find_path(FEC_INCLUDE_DIR NAMES fec.h)
+find_library(FEC_LIB REQUIRED NAMES fec)
 
-add_library(openstint_fec STATIC
-    "${libfec_SOURCE_DIR}/fec.c"
-    "${libfec_SOURCE_DIR}/viterbi29.c"
-    "${libfec_SOURCE_DIR}/viterbi29_port.c"
-    "${libfec_SOURCE_DIR}/cpu_mode_unknown.c"
-)
-target_include_directories(openstint_fec SYSTEM PUBLIC "${libfec_SOURCE_DIR}")
-set_target_properties(openstint_fec PROPERTIES
-    C_STANDARD 11
-    POSITION_INDEPENDENT_CODE ON
-)
+# Exposed as openstint::fec so src/CMakeLists.txt does not care where it came
+# from -- static on Windows, the distribution's shared object elsewhere.
+add_library(openstint_fec INTERFACE)
+target_include_directories(openstint_fec SYSTEM INTERFACE ${FEC_INCLUDE_DIR})
+target_link_libraries(openstint_fec INTERFACE ${FEC_LIB})
 add_library(openstint::fec ALIAS openstint_fec)

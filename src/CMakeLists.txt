@@ -72,8 +72,16 @@ if(WIN32 AND (USE_HACKRF OR USE_RTLSDR))
     # here means the release zip cannot drift from what the binaries actually
     # need. Note $<TARGET_RUNTIME_DLLS> would not work: it only sees IMPORTED
     # targets carrying an IMPORTED_LOCATION, which MinGW-found libraries do not.
+    #
+    # DIRECTORIES is required, not a hint. On Windows the resolver looks in the
+    # depending binary's own directory and in system32, and nowhere else -- it
+    # never consults PATH, so /mingw64/bin is invisible to it and every MinGW
+    # DLL comes back unresolved. The compiler lives in that same directory,
+    # which is how we name it without hardcoding the MSYS2 install prefix.
+    get_filename_component(OPENSTINT_MINGW_BIN "${CMAKE_CXX_COMPILER}" DIRECTORY)
     install(RUNTIME_DEPENDENCY_SET openstint_runtime_deps
             PRE_EXCLUDE_REGEXES "api-ms-.*" "ext-ms-.*"
             POST_EXCLUDE_REGEXES ".*[Ss]ystem32.*"
+            DIRECTORIES "${OPENSTINT_MINGW_BIN}"
             DESTINATION ${CMAKE_INSTALL_BINDIR})
 endif()
