@@ -183,6 +183,27 @@ FetchContent_Declare(liquid
 )
 FetchContent_MakeAvailable(liquid)
 
+# Two files in liquid's `core` object library assume POSIX that MinGW-w64 does
+# not have, and both are hard errors rather than warnings:
+#
+#   - timer.c includes <sys/resource.h> and calls getrusage()
+#   - logging.c calls strsep(), and GCC 14 made implicit declarations an error
+#
+# cmake/shims/mingw/ supplies both -- see those headers for what they do and do
+# not cover. Shimming rather than dropping timer.c or configuring the Windows
+# build with ENABLE_LOGGING=OFF: either of those would leave Windows with a
+# different liquid than Linux and macOS, and a decoder that differs by platform
+# is the thing this file exists to prevent.
+#
+# BEFORE puts the shims ahead of the toolchain headers, which is what lets
+# string.h layer onto the real one with #include_next. PRIVATE keeps the
+# directory off every other target's include path -- nothing outside these four
+# source files ever sees it.
+if(MINGW)
+    target_include_directories(core BEFORE PRIVATE
+        "${CMAKE_CURRENT_LIST_DIR}/shims/mingw")
+endif()
+
 add_library(openstint::liquid ALIAS liquid-static)
 
 # ---------------------------------------------------------------------------
