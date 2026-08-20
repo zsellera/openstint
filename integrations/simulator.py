@@ -6,11 +6,18 @@ Simulates decoder behavior by publishing status messages and transponder passing
 over ZMQ. Useful for testing laptimer software without hardware.
 
 Usage:
-    python simulator.py 10:1 15:2
+    python simulator.py 30:3 40:5
 
     This starts the simulator with two transponders:
-    - Transponder 1: passes every ~10 seconds (jitter variance 1)
-    - Transponder 2: passes every ~15 seconds (jitter variance 2)
+    - Transponder 1: never faster than 30 s, median lap 33 s
+    - Transponder 2: never faster than 40 s, median lap 45 s
+
+Each positional argument describes one transponder as `period:median_gap`,
+both in seconds. Lap times are drawn from a shifted lognormal distribution
+rather than a normal one, because real lap times are skewed: `period` is the
+fastest possible lap and `median_gap` is the median time lost on top of it,
+so half the laps land below `period + median_gap` and half above, with a long
+tail. See `Simulator.passing_loop` for the details.
 """
 
 import argparse
@@ -18,7 +25,7 @@ import random
 import sys
 import threading
 import time
-from math import floor
+from math import exp, floor, log
 
 import zmq
 
@@ -54,10 +61,56 @@ class Simulator:
             self.publish(msg)
             time.sleep(5)
 
-    def passing_loop(self, transponder_id: int, period: float, jitter: float):
-        """Generate passings at intervals following normal distribution."""
+    def passing_loop(self, transponder_id: int, period: float, median_gap: float):
+        """Generate passings at lognormally distributed intervals.
+
+        Real lap times are not normally distributed. There is a hard floor set
+        by car, driver and track, and a long tail above it caused by traffic,
+        mistakes and off-track excursions: a driver can never go much faster
+        than their best lap, but can always be a lot slower. Of the generators
+        tried against recorded sessions, a shifted lognormal reproduced that
+        skew best, so the interval is
+
+            interval = period + median_gap * exp(gauss(0, sigma))
+
+        which is a lognormal of median `median_gap` shifted up by `period`.
+
+        period (seconds)
+            Hard lower bound on the interval, i.e. the "perfect lap". No
+            generated interval is ever shorter than this.
+
+        median_gap (seconds)
+            Median time lost on top of `period`, so the median interval is
+            exactly `period + median_gap`: half the laps come in under it,
+            half over, with the slow half stretching much further from the
+            median than the fast half. Set it to 0 for a metronome that
+            repeats `period` exactly.
+
+        The spread is not a separate knob. It is derived as
+
+            sigma = log(1 + median_gap) / 10
+
+        so a driver who loses more time per lap is also less consistent, which
+        is what the recorded sessions show. Typical values, for `period` 32 s:
+
+            median_gap | median lap | 5th-95th percentile |
+            -----------+------------+---------------------+-------------------
+                     0 |     32.0 s | exact               | metronome
+                     1 |     33.0 s | 32.9 ..  33.1 s     | very consistent
+                     3 |     35.0 s | 34.4 ..  35.8 s     | typical club racer
+                     5 |     37.0 s | 35.7 ..  38.7 s     | inconsistent
+                    10 |     42.0 s | 38.7 ..  46.8 s     | wet / heavy traffic
+                    20 |     52.0 s | 44.1 ..  65.0 s     | practice, out laps
+
+        Note that `median_gap` is time *lost*, not the lap time itself: a kart
+        session with 32 s laps is `30:2`, not `30:32`.
+        """
+        # exp(gauss(0, sigma)) rather than lognormvariate(log(median_gap), ...)
+        # so that median_gap=0 degenerates to a fixed period instead of log(0).
+        sigma = log(1.0 + median_gap) / 10.0
+
         while self.running:
-            interval = period + random.lognormvariate(jitter, jitter/10.0)
+            interval = period + median_gap * exp(random.gauss(0.0, sigma))
             time.sleep(interval)
 
             timecode = self.get_timecode()
@@ -80,18 +133,37 @@ class Simulator:
         self.running = False
 
 
-def parse_period_jitter(arg: str) -> tuple[float, float]:
-    """Parse 'period:jitter' argument."""
+def parse_period_gap(arg: str) -> tuple[float, float]:
+    """Parse 'period:median_gap' argument, both in seconds.
+
+    `period` is the fastest possible lap, `median_gap` the median time lost on
+    top of it. See `Simulator.passing_loop`.
+    """
     parts = arg.split(":")
     if len(parts) != 2:
-        raise ValueError(f"Invalid format: {arg}. Expected 'period:jitter'")
-    return float(parts[0]), float(parts[1])
+        raise ValueError(f"Invalid format: {arg}. Expected 'period:median_gap'")
+    period, median_gap = float(parts[0]), float(parts[1])
+    if period <= 0:
+        raise ValueError(f"Invalid period in {arg}: must be positive")
+    if median_gap < 0:
+        raise ValueError(f"Invalid median_gap in {arg}: must be zero or positive")
+    return period, median_gap
 
 
 def main():
     parser = argparse.ArgumentParser(
         description="OpenStint decoder simulator",
-        epilog="Example: %(prog)s 10:1 15:2  (two transponders with different periods)",
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+        epilog=(
+            "Example: %(prog)s 30:3 40:5  (two transponders with different pace)\n"
+            "\n"
+            "Both fields are seconds. 'period' is the fastest possible lap, and\n"
+            "'median_gap' is the median time lost on top of it, so the median lap\n"
+            "is period + median_gap. Laps are lognormally scattered around that\n"
+            "median: never below period, with a long slow tail. Use 0 for a\n"
+            "metronome. Note median_gap is time lost, not the lap time itself --\n"
+            "a 32s kart lap is '30:2', not '30:32'."
+        ),
     )
     parser.add_argument(
         "--port",
@@ -102,8 +174,11 @@ def main():
     parser.add_argument(
         "transponders",
         nargs="*",
-        metavar="period:jitter",
-        help="Transponder timing as 'period:jitter' (e.g., '10:1' for 10s mean, 1s variance)",
+        metavar="period:median_gap",
+        help=(
+            "Transponder timing in seconds; e.g. '30:3' means laps never faster "
+            "than 30s, with a median of 33s. See the notes below"
+        ),
     )
     args = parser.parse_args()
 
@@ -119,17 +194,20 @@ def main():
     # Start transponder threads
     for i, spec in enumerate(args.transponders, start=1):
         try:
-            period, jitter = parse_period_jitter(spec)
+            period, median_gap = parse_period_gap(spec)
         except ValueError as e:
             print(f"Error: {e}", file=sys.stderr)
             sys.exit(1)
 
         transponder_id = 1000000 + i
-        print(f"[simulator] transponder {transponder_id}: period={period}s, jitter={jitter}s")
+        print(
+            f"[simulator] transponder {transponder_id}: period={period}s, "
+            f"median_gap={median_gap}s (median lap {period + median_gap:.1f}s)"
+        )
 
         t = threading.Thread(
             target=sim.passing_loop,
-            args=(transponder_id, period, jitter),
+            args=(transponder_id, period, median_gap),
             daemon=True,
         )
         t.start()
