@@ -27,52 +27,29 @@ jobs:
         msystem: MINGW64
         update: true
         cache: true
+        # rtl-sdr, hackrf, liquid-dsp and libfec are built from pinned source
+        # by cmake/Dependencies.cmake. That replaces three things that used to
+        # live in this file: the MSYS2 rtl-sdr and hackrf packages (rtl-sdr
+        # was stuck at 2.0.2, built November 2024), an autotools build of
+        # libfec patched with two seds, and -- worst of it -- liquid-dsp
+        # pulled as a prebuilt .a and .dll from the master branch of an
+        # unrelated project's repository, unversioned and unverified.
         install: >-
           mingw-w64-x86_64-toolchain
           mingw-w64-x86_64-cmake
           mingw-w64-x86_64-ninja
           mingw-w64-x86_64-zeromq
           mingw-w64-x86_64-cppzmq
-          mingw-w64-x86_64-hackrf
-          mingw-w64-x86_64-rtl-sdr
+          mingw-w64-x86_64-libusb
           git
-          make
-          autoconf
-          automake
-          libtool
           pkg-config
           zip
-
-    - name: Build and install libfec
-      shell: msys2 {0}
-      run: |
-        git clone https://github.com/quiet/libfec.git
-        cd libfec
-        ./configure --prefix=/mingw64
-        # Fix MinGW build: remove -lc flag and use .dll.a extension for shared library
-        sed -i 's/-lc$//' Makefile
-        sed -i 's/libfec\.so/libfec.dll/' Makefile
-        make
-        mkdir -p /mingw64/lib
-        cp libfec.dll libfec.a /mingw64/lib
-        cp fec.h /mingw64/include
-        cd ..
-
-    - name: Build and install liquid-dsp
-      shell: msys2 {0}
-      run: |
-        mkdir -p /mingw64/include/liquid
-        curl --output /mingw64/include/liquid/liquid.h https://raw.githubusercontent.com/cjcliffe/CubicSDR/refs/heads/master/external/liquid-dsp/include/liquid/liquid.h
-        curl --output /mingw64/bin/libliquid.a https://raw.githubusercontent.com/cjcliffe/CubicSDR/refs/heads/master/external/liquid-dsp/gcc/64/libliquid.a
-        curl --output /mingw64/bin/libliquid.dll https://raw.githubusercontent.com/cjcliffe/CubicSDR/refs/heads/master/external/liquid-dsp/gcc/64/libliquid.dll
 
     - name: Build OpenStint
       shell: msys2 {0}
       run: |
-        mkdir build
-        cd build
-        cmake -G "Ninja" -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} ..
-        ninja
+        cmake -G "Ninja" -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} -B build .
+        ninja -C build
 
     - name: Setup Python
       if: matrix.build_type == 'Release'
@@ -90,11 +67,32 @@ jobs:
     - name: Package binaries
       shell: msys2 {0}
       run: |
+        set -eu
+        # The .exe files and their DLLs both come from `cmake --install`. The
+        # DLL set is resolved by install(RUNTIME_DEPENDENCY_SET) in
+        # src/CMakeLists.txt, which replaces the old
+        # `ldd | grep mingw64 | awk | xargs cp || true` line -- that one
+        # swallowed its own failures, so a missing DLL only showed up as a
+        # user's .exe refusing to start.
+        cmake --install build --prefix "$PWD/staging"
         mkdir openstint-windows-x64
-        cp build/src/openstint_hackrf.exe openstint-windows-x64/
-        cp build/src/openstint_rtlsdr.exe openstint-windows-x64/
-        # Copy required DLLs (union of both binaries)
-        ldd build/src/openstint_hackrf.exe build/src/openstint_rtlsdr.exe | grep mingw64 | awk '{print $3}' | sort -u | xargs -I{} cp {} openstint-windows-x64/ || true
+        cp staging/bin/* openstint-windows-x64/
+
+        # With the SDR and DSP libraries linked statically, what is left is
+        # the toolchain runtime, ZeroMQ and libusb. Assert the two binaries
+        # and at least one DLL made it, so an empty or partial install fails
+        # here rather than in a download.
+        test -f openstint-windows-x64/openstint_hackrf.exe
+        test -f openstint-windows-x64/openstint_rtlsdr.exe
+        ls openstint-windows-x64/*.dll >/dev/null
+        for lib in librtlsdr libhackrf libliquid libfec; do
+          if ls openstint-windows-x64/ | grep -qi "${lib}"; then
+            echo "::error::${lib} was shipped as a DLL; it must be linked statically"
+            exit 1
+          fi
+        done
+        ls -l openstint-windows-x64/
+
         cp README.md openstint-windows-x64/
         cp LICENSE openstint-windows-x64/
         cp tools/start.bat openstint-windows-x64/

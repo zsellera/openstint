@@ -19,11 +19,13 @@ HackRF One is an open-source radio. The orignal is manufactured by [Great Scott 
 * do not purchase a portapack, as it is useless for laptiming application
 * bare PCBs (w/o housing) are cheaper options which might worth considering
 
-## RTL-SDR v4
+## RTL-SDR V4/V4L
 
 Prefer the "original" [RTL-SDR Blog v4](https://www.rtl-sdr.com/buy-rtl-sdr-dvb-t-dongles/). Thermal management is a known painpoint of these devices, and not every manufacturer is up to this challenge.
 
-Right now, the V4 is [out of stock](https://www.rtl-sdr.com/rtl-sdr-blog-v4-end-of-line/). If you can, wait for V4L, it's expected 2026 summer. If you buy an off-brand, and it's overheating (it's not a neccessity, many manufacturer can indeed use the thermal paste and aluminium blocks), just attach a fan. Being hot is the normal operation, you have to just take some of that heat away occasionally.
+The V4 is [no longer manufactured](https://www.rtl-sdr.com/rtl-sdr-blog-v4-end-of-line/). The [V4L (V4 Lite)](https://www.rtl-sdr.com/rtl-sdr-blog-v4l-lite-now-available-for-purchase/) is supported: OpenStint carries its own copy of the rtl-sdr driver, pinned to v2.0.3, which is the release that added V4L detection. You do not need a matching `librtlsdr` on your system, and having an older one installed does not interfere. 
+
+If you buy an off-brand, and it's overheating (it's not a neccessity, many manufacturer can indeed use the thermal paste and aluminium blocks), just attach a fan. Being hot is the normal operation, you have to just take some of that heat away.
 
 ## RTL-SDR v3
 

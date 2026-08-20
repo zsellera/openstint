@@ -37,6 +37,11 @@ jobs:
         run: |
           set -eux
           apt-get update
+          # rtl-sdr, hackrf, liquid-dsp and libfec are built from pinned
+          # source by cmake/Dependencies.cmake and linked statically, so no
+          # -dev package for them. git is needed at configure time now, not
+          # just for checkout: FetchContent clones the pinned revisions.
+          # libusb and ZeroMQ remain system libraries.
           apt-get install -y --no-install-recommends \
             build-essential \
             cmake \
@@ -46,13 +51,9 @@ jobs:
             ca-certificates \
             curl \
             dpkg-dev \
+            libusb-1.0-0-dev \
             libzmq3-dev \
-            cppzmq-dev \
-            libhackrf-dev \
-            librtlsdr-dev \
-            libliquid-dev \
-            libfec0 \
-            libfec-dev
+            cppzmq-dev
 
       - name: Checkout code
         uses: actions/checkout@v4
@@ -85,10 +86,29 @@ jobs:
       - name: Build OpenStint
         run: |
           set -eux
-          cmake -G Ninja -DCMAKE_BUILD_TYPE=Release -B build .
+          cmake -G Ninja -DCMAKE_BUILD_TYPE=Release -DSAMPLES_PER_SYMBOL=2 -B build .
           ninja -C build
           ldd build/src/openstint_rtlsdr
           ldd build/src/openstint_hackrf
+
+      - name: Verify the SDR and DSP libraries are linked statically
+        run: |
+          set -eu
+          # If any of these reappears as a NEEDED entry the binary is back to
+          # whatever Debian ships -- 2.0.2 today, with no RTL-SDR Blog V4L
+          # support -- and the pin in cmake/Dependencies.cmake stops meaning
+          # anything. It fails silently at runtime, so it has to fail loudly
+          # here.
+          for bin in openstint_rtlsdr openstint_hackrf; do
+            needed="$(ldd "build/src/${bin}")"
+            for lib in librtlsdr libhackrf libliquid libfec; do
+              if printf '%s\n' "$needed" | grep -q "${lib}"; then
+                echo "::error::${bin} dynamically links ${lib}; it must be vendored"
+                exit 1
+              fi
+            done
+          done
+          echo "ok: no system SDR/DSP library is linked dynamically"
 
       - name: Package
         id: package
@@ -148,6 +168,34 @@ jobs:
               exit 1
             fi
           done
+
+      - name: Verify the udev rules and hardware tools were pulled in
+        run: |
+          set -eux
+          # The decoders link their SDR drivers statically, so shlibdeps no
+          # longer produces these and build-deb.sh declares them by hand. This
+          # step is what proves the hand-written names still resolve.
+          #
+          # The rules files are the load-bearing part: without them the device
+          # nodes are not group plugdev and openstint.service, which reaches
+          # USB through SupplementaryGroups=plugdev, cannot open the dongle.
+          # Nothing else in this workflow would notice -- there is no udev in
+          # a container, so the rules are never applied here, only installed.
+          # Note Debian renames hackrf's 53-hackrf.rules to 60-libhackrf0.rules
+          # when it packages it; both land under /usr/lib, not /etc.
+          test -f /usr/lib/udev/rules.d/60-librtlsdr0.rules
+          test -f /usr/lib/udev/rules.d/60-libhackrf0.rules
+          grep -q 'GROUP="plugdev"' /usr/lib/udev/rules.d/60-librtlsdr0.rules
+          grep -q 'GROUP="plugdev"' /usr/lib/udev/rules.d/60-libhackrf0.rules
+          # The RTL-SDR Blog V4 and V4L keep the stock RTL2832U product id, so
+          # the rules that ship today already cover the hardware the vendored
+          # 2.0.3 driver adds support for.
+          grep -q 'idProduct}=="2838"' /usr/lib/udev/rules.d/60-librtlsdr0.rules
+          # The command line tools users need to identify their hardware.
+          command -v rtl_test
+          command -v rtl_eeprom
+          command -v rtl_biast
+          command -v hackrf_info
 
       - name: Verify packaged files landed
         run: |

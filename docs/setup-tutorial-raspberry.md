@@ -101,16 +101,24 @@ sudo apt-get install build-essential cmake pkg-config ninja-build git
 
 Install its dependencies:
 ```shell
-sudo apt-get install hackrf libhackrf-dev librtlsdr-dev libliquid-dev libzmq3-dev cppzmq-dev libfec0 libfec-dev
+sudo apt-get install libusb-1.0-0-dev libzmq3-dev cppzmq-dev
 ```
 
-Then checkout this repo, and build with cmake/make (`Release` build enables `-O3` compiler flag, improves performance significantly):
+CMake fetches rtl-sdr, hackrf, liquid-dsp and libfec: each at a pinned
+revision and are linked statically.
+
+Install these to have the udev rules and device-specific CLI:
+```shell
+sudo apt-get install rtl-sdr hackrf
+```
+
+Then checkout this repo, and build with cmake/ninja (`Release` build enables `-O3` compiler flag, improves performance significantly). The first build also compiles the four vendored libraries, so give it a few minutes on a Pi:
 ```shell
 git clone https://github.com/zsellera/openstint.git
 cd openstint
-cmake -DCMAKE_BUILD_TYPE=Release .
-make
-./src/openstint_rtlsdr -g 20  # or ./src/openstint_hackrf -l 20 -v 20
+cmake -G Ninja -DCMAKE_BUILD_TYPE=Release -B build .
+ninja -C build
+./build/src/openstint_rtlsdr -g 20  # or ./build/src/openstint_hackrf -l 20 -v 20
 ```
 
 ### Services, from source

@@ -36,13 +36,10 @@ jobs:
         sudo apt-get install -y \
           cmake \
           ninja-build \
+          pkg-config \
+          libusb-1.0-0-dev \
           libzmq3-dev \
-          cppzmq-dev \
-          libhackrf-dev \
-          librtlsdr-dev \
-          libliquid-dev \
-          libfec0 \
-          libfec-dev
+          cppzmq-dev
 
     - name: Install Clang
       if: matrix.compiler.cc == 'clang'
@@ -65,3 +62,24 @@ jobs:
         ldd ./build/src/openstint_hackrf
         ./build/src/openstint_rtlsdr -h || true
         ldd ./build/src/openstint_rtlsdr
+
+    - name: Verify the SDR and DSP libraries are linked statically
+      run: |
+        set -eu
+        # The whole point of vendoring: if any of these reappears as a NEEDED
+        # entry, the binary is back to using whatever the distribution ships
+        # and the pinned driver version stops meaning anything. This is the
+        # only step that can catch that, and it must catch it here rather than
+        # at a race meeting -- the soname has been librtlsdr.so.0 since 0.5.3,
+        # so an old library loads silently and merely fails to see the dongle.
+        for bin in openstint_hackrf openstint_rtlsdr; do
+          needed="$(ldd "./build/src/${bin}")"
+          for lib in librtlsdr libhackrf libliquid libfec; do
+            if printf '%s\n' "$needed" | grep -q "${lib}"; then
+              echo "::error::${bin} dynamically links ${lib}; it must be vendored"
+              printf '%s\n' "$needed"
+              exit 1
+            fi
+          done
+        done
+        echo "ok: no system SDR/DSP library is linked dynamically"
