@@ -43,9 +43,8 @@ function(openstint_add_decoder target main_source radio_lib samples_per_symbol)
         openstint::liquid
         openstint::fec
         cppzmq
+        m
     )
-    # libm arrives through liquid-dsp, which links it PUBLIC. Adding it again
-    # here is what produced the duplicate-library warning from ld on macOS.
 
     if(WIN32)
       # Symbolising the crash handler's backtrace.

@@ -33,11 +33,11 @@ Vehicle passings are printed to `stdout` and published with ZeroMQ at `:5556`. T
 
 [Full Raspberry/Ubuntu tutorial here](docs/setup-tutorial-raspberry.md).
 
-You only need a compiler, CMake 3.28+, git, and two system libraries:
+You need a compiler, CMake 3.28+, git, and a handful of system libraries:
 
 ```shell
 sudo apt-get install build-essential cmake ninja-build git pkg-config \
-                     libusb-1.0-0-dev libzmq3-dev cppzmq-dev
+                     libusb-1.0-0-dev libzmq3-dev cppzmq-dev libliquid-dev
 ```
 
 ```shell
@@ -47,7 +47,7 @@ ninja -C build
 
 To use goodies in the `integrations/` directory, `sudo apt-get install python3 python3-zmq` as well.
 
-Note on Mac: `brew install cmake ninja pkg-config libusb zeromq cppzmq` is all you need.
+Note on Mac: `brew install cmake ninja pkg-config libusb zeromq cppzmq liquid-dsp` is all you need.
 
 HackRF One users: there is a build flag `SAMPLES_PER_SYMBOL`, default to `8`, resulting in 10 MSPS sampling rate and slightly larger dynamic range than of RTL-SDR. Lower CPU consumption is achievable by setting it to `2` (2.5 MSPS). Setting to `4` is not recommended (bad performance). RTL-SDR maxes out at the required minimum of 2.5 MSPS (`SAMPLES_PER_SYMBOL=2`), there is no way to fine-tune that.
 

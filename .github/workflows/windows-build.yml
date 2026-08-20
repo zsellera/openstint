@@ -27,13 +27,11 @@ jobs:
         msystem: MINGW64
         update: true
         cache: true
-        # rtl-sdr, hackrf, liquid-dsp and libfec are built from pinned source
-        # by cmake/Dependencies.cmake. That replaces three things that used to
-        # live in this file: the MSYS2 rtl-sdr and hackrf packages (rtl-sdr
-        # was stuck at 2.0.2, built November 2024), an autotools build of
-        # libfec patched with two seds, and -- worst of it -- liquid-dsp
-        # pulled as a prebuilt .a and .dll from the master branch of an
-        # unrelated project's repository, unversioned and unverified.
+        # rtl-sdr, hackrf and libfec are built from pinned source by
+        # cmake/Dependencies.cmake. That replaces the MSYS2 rtl-sdr and hackrf
+        # packages (rtl-sdr was stuck at 2.0.2, built November 2024) and an
+        # autotools build of libfec patched with two seds. liquid-dsp is not
+        # vendored -- it comes from CubicSDR below, as it always has.
         install: >-
           mingw-w64-x86_64-toolchain
           mingw-w64-x86_64-cmake
@@ -44,6 +42,23 @@ jobs:
           git
           pkg-config
           zip
+
+    # MSYS2 has no liquid-dsp package, so this takes the prebuilt MinGW binaries
+    # from CubicSDR's vendored copy. Unversioned and served off a branch, so it
+    # can change under us without warning -- the reason the other three
+    # libraries are pinned by revision instead. Kept because building liquid
+    # from source on MinGW does not work: upstream's CMakeLists shells out to a
+    # .sh for its version string, which CMake cannot launch on Windows, defines
+    # only a SHARED target, and links `c`, for which MinGW has no archive.
+    - name: Install liquid-dsp
+      shell: msys2 {0}
+      run: |
+        set -eu
+        LIQUID=https://raw.githubusercontent.com/cjcliffe/CubicSDR/refs/heads/master/external/liquid-dsp
+        mkdir -p /mingw64/include/liquid
+        curl -sSfL -o /mingw64/include/liquid/liquid.h "$LIQUID/include/liquid/liquid.h"
+        curl -sSfL -o /mingw64/lib/libliquid.a       "$LIQUID/gcc/64/libliquid.a"
+        curl -sSfL -o /mingw64/bin/libliquid.dll     "$LIQUID/gcc/64/libliquid.dll"
 
     - name: Build OpenStint
       shell: msys2 {0}
@@ -78,14 +93,22 @@ jobs:
         mkdir openstint-windows-x64
         cp staging/bin/* openstint-windows-x64/
 
-        # With the SDR and DSP libraries linked statically, what is left is
-        # the toolchain runtime, ZeroMQ and libusb. Assert the two binaries
+        # With the SDR libraries linked statically, what is left is the
+        # toolchain runtime, ZeroMQ, libusb and liquid. Assert the two binaries
         # and at least one DLL made it, so an empty or partial install fails
         # here rather than in a download.
         test -f openstint-windows-x64/openstint_hackrf.exe
         test -f openstint-windows-x64/openstint_rtlsdr.exe
         ls openstint-windows-x64/*.dll >/dev/null
-        for lib in librtlsdr libhackrf libliquid libfec; do
+
+        # liquid is dynamically linked, so its DLL has to travel with the .exe.
+        # Assert it rather than trust the dependency resolver -- a missing one
+        # would otherwise surface as a user's .exe silently refusing to start.
+        test -f openstint-windows-x64/libliquid.dll
+
+        # liquid-dsp is deliberately absent from this list: it is a system
+        # library here, so libliquid.dll is expected to ship alongside.
+        for lib in librtlsdr libhackrf libfec; do
           if ls openstint-windows-x64/ | grep -qi "${lib}"; then
             echo "::error::${lib} was shipped as a DLL; it must be linked statically"
             exit 1

@@ -37,10 +37,10 @@ jobs:
         run: |
           set -eux
           apt-get update
-          # rtl-sdr, hackrf, liquid-dsp and libfec are built from pinned
-          # source by cmake/Dependencies.cmake and linked statically, so no
-          # -dev package for them. git is needed at configure time now, not
-          # just for checkout: FetchContent clones the pinned revisions.
+          # rtl-sdr, hackrf and libfec are built from pinned source by
+          # cmake/Dependencies.cmake and linked statically, so no -dev package
+          # for them. git is needed at configure time now, not just for
+          # checkout: FetchContent clones the pinned revisions. liquid-dsp,
           # libusb and ZeroMQ remain system libraries.
           apt-get install -y --no-install-recommends \
             build-essential \
@@ -53,7 +53,8 @@ jobs:
             dpkg-dev \
             libusb-1.0-0-dev \
             libzmq3-dev \
-            cppzmq-dev
+            cppzmq-dev \
+            libliquid-dev
 
       - name: Checkout code
         uses: actions/checkout@v4
@@ -101,7 +102,7 @@ jobs:
           # here.
           for bin in openstint_rtlsdr openstint_hackrf; do
             needed="$(ldd "build/src/${bin}")"
-            for lib in librtlsdr libhackrf libliquid libfec; do
+            for lib in librtlsdr libhackrf libfec; do
               if printf '%s\n' "$needed" | grep -q "${lib}"; then
                 echo "::error::${bin} dynamically links ${lib}; it must be vendored"
                 exit 1

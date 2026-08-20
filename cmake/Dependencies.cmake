@@ -1,13 +1,11 @@
 # ---------------------------------------------------------------------------
 # Vendored third-party libraries.
 #
-# rtl-sdr, libhackrf, liquid-dsp and libfec are built from source and linked
-# statically into the decoders on every platform, pinned to the revisions
-# below. The alternative -- whatever each package manager happens to ship --
-# produced four materially different builds of the same decoder: liquid-dsp
-# ranged from a prebuilt .dll curl'd out of an unrelated project's repository
-# on Windows to 1.7.0 from Homebrew, and librtlsdr from 0.6.0 to 2.0.2
-# depending on the distribution release.
+# rtl-sdr, libhackrf and libfec are built from source and linked statically
+# into the decoders on every platform, pinned to the revisions below. The
+# alternative -- whatever each package manager happens to ship -- produced
+# materially different builds of the same decoder, with librtlsdr ranging from
+# 0.6.0 to 2.0.2 depending on the distribution release.
 #
 # For rtl-sdr this is not tidiness, it is the only way to control which driver
 # runs. Hardware support lives entirely inside the library: v2.0.3 added the
@@ -17,9 +15,11 @@
 # simply does not see the dongle -- no link error, no runtime error, and no
 # rtlsdr_get_version() in the public API to assert on.
 #
-# libusb-1.0 and ZeroMQ stay system libraries on purpose. libusb is the
-# kernel-facing USB backend and should match the host; ZeroMQ is a stable,
-# widely packaged ABI that carries no hardware knowledge.
+# liquid-dsp, libusb-1.0 and ZeroMQ stay system libraries on purpose. None of
+# them carries hardware knowledge, all three are widely packaged, and libusb in
+# particular is the kernel-facing USB backend and should match the host. See
+# the liquid-dsp block below for why it is not vendored despite being the
+# heaviest of the three.
 #
 # The .deb still declares runtime dependencies on rtl-sdr and hackrf even
 # though it no longer links them -- see packaging/build-deb.sh for why.
@@ -31,24 +31,8 @@ include(FetchContent)
 # Bump deliberately: these decide which hardware the shipped binaries support.
 set(OPENSTINT_RTLSDR_TAG "v2.0.3")      # 2026-08-11, adds RTL-SDR Blog V4L
 set(OPENSTINT_HACKRF_TAG "v2026.01.3")  # 2026-01-30
-set(OPENSTINT_LIQUID_TAG "v1.7.0")      # 2025-02-01; see the liquid block below
 # quiet/libfec publishes no tags; this is the tip of master.
 set(OPENSTINT_LIBFEC_TAG "9750ca0a6d0a786b506e44692776b541f90daa91")
-
-# liquid compile flags:
-# disable everything since 2008 (intel atom and wonders like that are supported)
-set(C_AVX_FOUND      FALSE CACHE BOOL   "" FORCE)
-set(C_AVX_FLAGS      ""    CACHE STRING "" FORCE)
-set(C_AVX2_FOUND     FALSE CACHE BOOL   "" FORCE)
-set(C_AVX2_FLAGS     ""    CACHE STRING "" FORCE)
-set(C_AVX512_FOUND   FALSE CACHE BOOL   "" FORCE)
-set(C_AVX512_FLAGS   ""    CACHE STRING "" FORCE)
-set(CXX_AVX_FOUND    FALSE CACHE BOOL   "" FORCE)
-set(CXX_AVX_FLAGS    ""    CACHE STRING "" FORCE)
-set(CXX_AVX2_FOUND   FALSE CACHE BOOL   "" FORCE)
-set(CXX_AVX2_FLAGS   ""    CACHE STRING "" FORCE)
-set(CXX_AVX512_FOUND FALSE CACHE BOOL   "" FORCE)
-set(CXX_AVX512_FLAGS ""    CACHE STRING "" FORCE)
 
 # FetchContent brings its dependencies in as subdirectories, and IMPORTED
 # targets are only visible in the directory that created them and below.
@@ -159,75 +143,15 @@ add_library(openstint::hackrf ALIAS openstint_hackrf_lib)
 # ---------------------------------------------------------------------------
 # liquid-dsp
 # ---------------------------------------------------------------------------
-# Pinned to 1.7.0 rather than the 1.8.x line, deliberately. 1.8 added a core/
-# module whose two new files assume a POSIX-ish C11 libc: timer.c wants
-# <sys/resource.h> and getrusage(), logging.c wants strsep() and timespec_get().
-# MSYS2's MINGW64 environment targets the legacy msvcrt.dll and has none of
-# them, and liquid's CI has never built on Windows at all -- windows-latest is
-# commented out of its matrix, and its only Windows-aware code is an untested
-# `if (MSVC)` plus four "NOTE: MSVC probably invalid" comments in FindSIMD. All
-# 160 sources of 1.7.0 compile clean under that toolchain with nothing added.
-#
-# 1.7.0 has no FFTW detection at all (its CMakeLists says "TODO: check for
-# FFTW"), so unlike 1.8 there is no FIND_FFTW to force off and no risk of
-# libfftw3 appearing in the .deb's computed depends: on some build hosts.
-set(BUILD_EXAMPLES   OFF CACHE BOOL "" FORCE)
-set(BUILD_AUTOTESTS  OFF CACHE BOOL "" FORCE)
-set(BUILD_BENCHMARKS OFF CACHE BOOL "" FORCE)
-set(BUILD_SANDBOX    OFF CACHE BOOL "" FORCE)
-set(BUILD_DOC        OFF CACHE BOOL "" FORCE)
+# The one dependency that is NOT vendored.
+find_path(LIQUID_INCLUDE_DIR NAMES liquid/liquid.h)
+find_library(LIQUID_LIB REQUIRED NAMES liquid liquid-dsp)
 
-FetchContent_Declare(liquid
-    GIT_REPOSITORY https://github.com/jgaeddert/liquid-dsp.git
-    GIT_TAG        ${OPENSTINT_LIQUID_TAG}
-    GIT_SHALLOW    TRUE
-    EXCLUDE_FROM_ALL
-    SYSTEM
-)
-FetchContent_MakeAvailable(liquid)
-
-# 1.7.0 defines exactly one library target and hardcodes it SHARED -- there is
-# no static variant and no BUILD_SHARED_LIBS to flip. Rather than reimplement
-# its build, assemble a static archive out of the per-module OBJECT libraries it
-# already defines. Those carry the SIMD selection and compile flags chosen by
-# its own CMakeLists, so this tracks upstream instead of duplicating it. The
-# SHARED target is never built: EXCLUDE_FROM_ALL keeps it out of `all` and
-# nothing here depends on it.
-set(OPENSTINT_LIQUID_MODULES
-    agc audio buffer channel dotprod equalization fec fft filter framing math
-    matrix modem multichannel nco optim quantization random sequence utility
-    vector)
-
-# The object libraries are compiled without -fPIC upstream, which is fine for
-# the archive itself but not for what happens next: Debian's gcc builds
-# executables as PIE by default, and linking non-PIC objects into a PIE fails
-# outright at link time. Set it before the objects are built.
-set(OPENSTINT_LIQUID_OBJECTS "")
-foreach(module IN LISTS OPENSTINT_LIQUID_MODULES)
-    set_target_properties(${module} PROPERTIES POSITION_INDEPENDENT_CODE ON)
-    list(APPEND OPENSTINT_LIQUID_OBJECTS "$<TARGET_OBJECTS:${module}>")
-endforeach()
-
-add_library(openstint_liquid STATIC
-    "${liquid_SOURCE_DIR}/src/libliquid.c"
-    ${OPENSTINT_LIQUID_OBJECTS}
-)
-set_target_properties(openstint_liquid PROPERTIES POSITION_INDEPENDENT_CODE ON)
-
-# liquid.h is the public header; liquid.internal.h and the generated config.h
-# are needed to compile libliquid.c itself and stay private. Upstream reaches
-# these through directory-scoped include_directories() calls, which do not
-# apply to a target declared out here.
-target_include_directories(openstint_liquid SYSTEM
-    PUBLIC  "${liquid_SOURCE_DIR}/include"
-    PRIVATE "${liquid_SOURCE_DIR}" "${liquid_BINARY_DIR}")
-
-# Upstream links `c m` on its shared target. libm is the part that matters and
-# it does not exist as a separate archive on Windows.
-if(NOT WIN32)
-    target_link_libraries(openstint_liquid PUBLIC m)
-endif()
-
+# Exposed the same way as the vendored three, so src/CMakeLists.txt links
+# openstint::liquid without caring where it came from.
+add_library(openstint_liquid INTERFACE)
+target_include_directories(openstint_liquid SYSTEM INTERFACE ${LIQUID_INCLUDE_DIR})
+target_link_libraries(openstint_liquid INTERFACE ${LIQUID_LIB})
 add_library(openstint::liquid ALIAS openstint_liquid)
 
 # ---------------------------------------------------------------------------
