@@ -1,6 +1,6 @@
 #include "counters.hpp"
 
-#define REPORTING_PERIOD_US 5000000
+#define REPORTING_PERIOD_US 1000000
 
 
 bool RxStatistics::reporting_due(uint64_t current_timestamp) {
@@ -21,15 +21,10 @@ void RxStatistics::save_channel_characteristics(std::complex<float> _dc_offset, 
     noise_power = _noise_power;
 }
 
-void RxStatistics::reset(uint64_t current_timestamp) {
-    std::lock_guard<std::mutex> lock(mutex);
-
-    frames_received = 0;
-    frames_processed = 0;
-    last_reset_timestamp = current_timestamp;
-}
-
-std::string RxStatistics::to_string() {
+// Formatting and reset happen under a single lock: with two separate locked
+// calls, a frame registered by the RX thread in between would be counted into
+// neither the report being formatted nor the next one.
+std::string RxStatistics::snapshot_and_reset(uint64_t current_timestamp) {
     std::lock_guard<std::mutex> lock(mutex);
 
     // there is a minor trickery here: noise power is calculated from sample variance (sigma-squared),
@@ -47,5 +42,10 @@ std::string RxStatistics::to_string() {
         frames_received,
         frames_processed
     );
+
+    frames_received = 0;
+    frames_processed = 0;
+    last_reset_timestamp = current_timestamp;
+
     return temp;
 }

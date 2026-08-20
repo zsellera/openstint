@@ -24,8 +24,7 @@ public:
     void register_frame(bool processed);
     void save_channel_characteristics(std::complex<float> dc_offset, float noise_power);
 
-    void reset(uint64_t current_timestamp);
     bool reporting_due(uint64_t current_timestamp);
-    std::string to_string();
+    std::string snapshot_and_reset(uint64_t current_timestamp);
 };
 
