@@ -27,53 +27,61 @@ set(OPENSTINT_BASE_SOURCES
     crash_handler.cpp
 )
 
-# Required dependencies
-find_path(LIQUID_INCLUDE_DIR NAMES liquid/liquid.h)
-find_library(LIQUID_LIB REQUIRED NAMES liquid liquid-dsp)
-
-find_path(FEC_INCLUDE_DIR NAMES fec.h)
-find_library(FEC_LIB REQUIRED NAMES fec)
-
+# ZeroMQ is the one dependency still taken from the system: a stable, widely
+# packaged ABI that carries no hardware knowledge. Everything else is built
+# from a pinned source revision -- see cmake/Dependencies.cmake.
 find_package(cppzmq REQUIRED)
 
-if(USE_HACKRF)
-    find_path(HACKRF_INCLUDE_DIR NAMES libhackrf/hackrf.h)
-    find_library(HACKRF_LIB REQUIRED NAMES hackrf)
-
-    add_executable(openstint_hackrf main_hackrf.cpp ${OPENSTINT_BASE_SOURCES})
-    target_compile_definitions(openstint_hackrf PRIVATE SAMPLES_PER_SYMBOL=${SAMPLES_PER_SYMBOL})
-    target_compile_options(openstint_hackrf PRIVATE -I ".")
-    target_include_directories(openstint_hackrf PRIVATE ${LIQUID_INCLUDE_DIR} ${HACKRF_INCLUDE_DIR} ${cppzmq_INCLUDE_DIR} ${FEC_INCLUDE_DIR})
-    target_link_libraries(openstint_hackrf
-      ${LIQUID_LIB}
-      ${HACKRF_LIB}
-      ${FEC_LIB}
-      cppzmq
-      m
+# Shared configuration for both decoders. They differ only in their main file,
+# their radio library and their symbol rate.
+function(openstint_add_decoder target main_source radio_lib samples_per_symbol)
+    add_executable(${target} ${main_source} ${OPENSTINT_BASE_SOURCES})
+    target_compile_definitions(${target} PRIVATE SAMPLES_PER_SYMBOL=${samples_per_symbol})
+    target_include_directories(${target} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+    target_link_libraries(${target} PRIVATE
+        ${radio_lib}
+        openstint::liquid
+        openstint::fec
+        cppzmq
+        m
     )
 
     if(WIN32)
-      target_link_libraries(openstint_hackrf dbghelp)
+      # Symbolising the crash handler's backtrace.
+      target_link_libraries(${target} PRIVATE dbghelp)
     endif()
+
+    install(TARGETS ${target}
+            RUNTIME_DEPENDENCY_SET openstint_runtime_deps
+            RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+endfunction()
+
+if(USE_HACKRF)
+    openstint_add_decoder(openstint_hackrf main_hackrf.cpp openstint::hackrf ${SAMPLES_PER_SYMBOL})
 endif()
 
 if(USE_RTLSDR)
-    find_path(RTLSDR_INCLUDE_DIR NAMES rtl-sdr.h)
-    find_library(RTLSDR_LIB REQUIRED NAMES rtlsdr)
+    # RTL-SDR maxes out at the required minimum of 2.5 MSPS, so this is fixed.
+    openstint_add_decoder(openstint_rtlsdr main_rtlsdr.cpp openstint::rtlsdr 2)
+endif()
 
-    add_executable(openstint_rtlsdr main_rtlsdr.cpp ${OPENSTINT_BASE_SOURCES})
-    target_compile_definitions(openstint_rtlsdr PRIVATE SAMPLES_PER_SYMBOL=2)
-    target_compile_options(openstint_rtlsdr PRIVATE -I ".")
-    target_include_directories(openstint_rtlsdr PRIVATE ${LIQUID_INCLUDE_DIR} ${RTLSDR_INCLUDE_DIR} ${cppzmq_INCLUDE_DIR} ${FEC_INCLUDE_DIR})
-    target_link_libraries(openstint_rtlsdr
-      ${LIQUID_LIB}
-      ${RTLSDR_LIB}
-      ${FEC_LIB}
-      cppzmq
-      m
-    )
-
-    if(WIN32)
-      target_link_libraries(openstint_rtlsdr dbghelp)
-    endif()
+if(WIN32 AND (USE_HACKRF OR USE_RTLSDR))
+    # Replaces the hand-rolled `ldd | grep mingw64 | xargs cp` in the packaging
+    # workflow. With the SDR and DSP libraries linked statically the remaining
+    # set is just the toolchain runtime, ZeroMQ and libusb, but resolving it
+    # here means the release zip cannot drift from what the binaries actually
+    # need. Note $<TARGET_RUNTIME_DLLS> would not work: it only sees IMPORTED
+    # targets carrying an IMPORTED_LOCATION, which MinGW-found libraries do not.
+    #
+    # DIRECTORIES is required, not a hint. On Windows the resolver looks in the
+    # depending binary's own directory and in system32, and nowhere else -- it
+    # never consults PATH, so /mingw64/bin is invisible to it and every MinGW
+    # DLL comes back unresolved. The compiler lives in that same directory,
+    # which is how we name it without hardcoding the MSYS2 install prefix.
+    get_filename_component(OPENSTINT_MINGW_BIN "${CMAKE_CXX_COMPILER}" DIRECTORY)
+    install(RUNTIME_DEPENDENCY_SET openstint_runtime_deps
+            PRE_EXCLUDE_REGEXES "api-ms-.*" "ext-ms-.*"
+            POST_EXCLUDE_REGEXES ".*[Ss]ystem32.*"
+            DIRECTORIES "${OPENSTINT_MINGW_BIN}"
+            DESTINATION ${CMAKE_INSTALL_BINDIR})
 endif()

@@ -231,9 +231,8 @@ void report_detections() {
     if (rx_stats.reporting_due(now_ts)) {
         const std::string report = std::format("S {} {}",
             status_ts,
-            rx_stats.to_string()
+            rx_stats.snapshot_and_reset(now_ts)
         );
-        rx_stats.reset(now_ts);
 
         std::cout << report << std::endl;
         publisher->send(zmq::buffer(report), zmq::send_flags::none);

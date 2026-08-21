@@ -27,14 +27,21 @@ jobs:
         msystem: MINGW64
         update: true
         cache: true
+        # rtl-sdr and hackrf are built from pinned source by
+        # cmake/Dependencies.cmake, replacing the MSYS2 packages of the same
+        # name (rtl-sdr was stuck at 2.0.2, built November 2024). MSYS2 has no
+        # package for liquid-dsp or libfec, so those two are still fetched by
+        # the steps below, exactly as they were before the vendoring: liquid as
+        # a prebuilt CubicSDR binary, libfec compiled from source. autoconf,
+        # automake, libtool and make exist in this list only for that libfec
+        # build -- the project itself is CMake and Ninja.
         install: >-
           mingw-w64-x86_64-toolchain
           mingw-w64-x86_64-cmake
           mingw-w64-x86_64-ninja
           mingw-w64-x86_64-zeromq
           mingw-w64-x86_64-cppzmq
-          mingw-w64-x86_64-hackrf
-          mingw-w64-x86_64-rtl-sdr
+          mingw-w64-x86_64-libusb
           git
           make
           autoconf
@@ -43,36 +50,55 @@ jobs:
           pkg-config
           zip
 
-    - name: Build and install libfec
+    # MSYS2 has no liquid-dsp package, so this takes the prebuilt MinGW binaries
+    # from CubicSDR's vendored copy. Unversioned and served off a branch, so it
+    # can change under us without warning -- the reason the other three
+    # libraries are pinned by revision instead. Kept because building liquid
+    # from source on MinGW does not work: upstream's CMakeLists shells out to a
+    # .sh for its version string, which CMake cannot launch on Windows, defines
+    # only a SHARED target, and links `c`, for which MinGW has no archive.
+    #
+    # libliquid.a is a real static archive, not an import library, so liquid
+    # ends up inside the .exe and the matching DLL is never needed -- CubicSDR
+    # ships one next to it, and the older version of this step downloaded it,
+    # but nothing has ever linked against it. It goes to /mingw64/lib rather
+    # than the old /mingw64/bin because that is where find_library() in
+    # cmake/Dependencies.cmake looks.
+    - name: Install liquid-dsp
       shell: msys2 {0}
       run: |
-        git clone https://github.com/quiet/libfec.git
+        set -eu
+        LIQUID=https://raw.githubusercontent.com/cjcliffe/CubicSDR/refs/heads/master/external/liquid-dsp
+        mkdir -p /mingw64/include/liquid
+        curl -sSfL -o /mingw64/include/liquid/liquid.h "$LIQUID/include/liquid/liquid.h"
+        curl -sSfL -o /mingw64/lib/libliquid.a        "$LIQUID/gcc/64/libliquid.a"
+
+    # No MSYS2 package and no pinned revision: upstream is quiet's fork of
+    # ka9q's libfec, whose K=9 r=1/2 Viterbi API has not changed in twenty
+    # years. The two seds are what make its autotools build work under MinGW --
+    # dropping `-lc`, which has no archive here, and naming the shared object
+    # .dll instead of .so. Both libfec.a and libfec.dll land in /mingw64/lib;
+    # there is no import library, so find_library() takes the static archive
+    # and libfec ends up inside the .exe.
+    - name: Install libfec
+      shell: msys2 {0}
+      run: |
+        set -eu
+        git clone --depth 1 https://github.com/quiet/libfec.git
         cd libfec
         ./configure --prefix=/mingw64
-        # Fix MinGW build: remove -lc flag and use .dll.a extension for shared library
         sed -i 's/-lc$//' Makefile
         sed -i 's/libfec\.so/libfec.dll/' Makefile
         make
         mkdir -p /mingw64/lib
         cp libfec.dll libfec.a /mingw64/lib
         cp fec.h /mingw64/include
-        cd ..
-
-    - name: Build and install liquid-dsp
-      shell: msys2 {0}
-      run: |
-        mkdir -p /mingw64/include/liquid
-        curl --output /mingw64/include/liquid/liquid.h https://raw.githubusercontent.com/cjcliffe/CubicSDR/refs/heads/master/external/liquid-dsp/include/liquid/liquid.h
-        curl --output /mingw64/bin/libliquid.a https://raw.githubusercontent.com/cjcliffe/CubicSDR/refs/heads/master/external/liquid-dsp/gcc/64/libliquid.a
-        curl --output /mingw64/bin/libliquid.dll https://raw.githubusercontent.com/cjcliffe/CubicSDR/refs/heads/master/external/liquid-dsp/gcc/64/libliquid.dll
 
     - name: Build OpenStint
       shell: msys2 {0}
       run: |
-        mkdir build
-        cd build
-        cmake -G "Ninja" -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} ..
-        ninja
+        cmake -G "Ninja" -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} -B build .
+        ninja -C build
 
     - name: Setup Python
       if: matrix.build_type == 'Release'
@@ -90,11 +116,38 @@ jobs:
     - name: Package binaries
       shell: msys2 {0}
       run: |
+        set -eu
+        # The .exe files and their DLLs both come from `cmake --install`. The
+        # DLL set is resolved by install(RUNTIME_DEPENDENCY_SET) in
+        # src/CMakeLists.txt, which replaces the old
+        # `ldd | grep mingw64 | awk | xargs cp || true` line -- that one
+        # swallowed its own failures, so a missing DLL only showed up as a
+        # user's .exe refusing to start.
+        cmake --install build --prefix "$PWD/staging"
         mkdir openstint-windows-x64
-        cp build/src/openstint_hackrf.exe openstint-windows-x64/
-        cp build/src/openstint_rtlsdr.exe openstint-windows-x64/
-        # Copy required DLLs (union of both binaries)
-        ldd build/src/openstint_hackrf.exe build/src/openstint_rtlsdr.exe | grep mingw64 | awk '{print $3}' | sort -u | xargs -I{} cp {} openstint-windows-x64/ || true
+        cp staging/bin/* openstint-windows-x64/
+
+        # With the SDR and DSP libraries linked statically, what is left is the
+        # toolchain runtime, ZeroMQ and libusb. Assert the two binaries and at
+        # least one DLL made it, so an empty or partial install fails here
+        # rather than in a download.
+        test -f openstint-windows-x64/openstint_hackrf.exe
+        test -f openstint-windows-x64/openstint_rtlsdr.exe
+        ls openstint-windows-x64/*.dll >/dev/null
+
+        # liquid and fec are on this list even though they are system libraries
+        # on every other platform. Neither is packaged for MSYS2, so both are
+        # installed above as plain static archives with no import library --
+        # which means they are linked into the .exe here and no DLL of either
+        # should ever appear beside it.
+        for lib in librtlsdr libhackrf libliquid libfec; do
+          if ls openstint-windows-x64/ | grep -qi "${lib}"; then
+            echo "::error::${lib} was shipped as a DLL; it must be linked statically"
+            exit 1
+          fi
+        done
+        ls -l openstint-windows-x64/
+
         cp README.md openstint-windows-x64/
         cp LICENSE openstint-windows-x64/
         cp tools/start.bat openstint-windows-x64/

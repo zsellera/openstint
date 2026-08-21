@@ -88,6 +88,30 @@ printf '%s\n' "$shlibs_depends" \
 # to be added by hand.
 printf '  - "%s"\n' "python3" "python3-zmq" >> "$DEPS_FILE"
 
+# The SDR libraries are vendored and linked statically (see
+# cmake/Dependencies.cmake), so shlibdeps no longer emits librtlsdr0 or
+# libhackrf0 and these have to be declared explicitly. Two reasons they must
+# stay:
+#
+#   1. udev rules. /usr/lib/udev/rules.d/60-librtlsdr0.rules and
+#      libhackrf0's 53-hackrf.rules are what make the USB device nodes mode
+#      0660 group plugdev. openstint.service reaches them through
+#      SupplementaryGroups=plugdev and cannot open the dongle without those
+#      rules. They used to arrive transitively via shlibdeps; dropping the
+#      dependency would break USB permissions on every fresh install, and the
+#      clean-container verify job cannot catch it because containers have no
+#      udev.
+#   2. rtl_test, rtl_eeprom, rtl_biast, hackrf_info and friends. Users need
+#      them to identify and troubleshoot hardware, so depend on the tools
+#      packages rather than the bare libraries -- each pulls its own library,
+#      and with it the rules file.
+#
+# Note this intentionally leaves two copies of each driver on the system: the
+# distribution's, used by the command line tools, and ours, compiled into the
+# decoders. That is the trade. The tools report on the hardware; only the
+# vendored copy decides what OpenStint can actually receive.
+printf '  - "%s"\n' "rtl-sdr" "hackrf" >> "$DEPS_FILE"
+
 echo "--- computed depends ---"
 cat "$DEPS_FILE"
 echo "------------------------"

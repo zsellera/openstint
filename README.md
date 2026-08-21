@@ -33,11 +33,31 @@ Vehicle passings are printed to `stdout` and published with ZeroMQ at `:5556`. T
 
 [Full Raspberry/Ubuntu tutorial here](docs/setup-tutorial-raspberry.md).
 
-This project use [libhackrf](https://github.com/greatscottgadgets/hackrf/), [rtl-sdr v4 drivers](https://github.com/rtlsdrblog/rtl-sdr-blog), [liquidsdr](https://liquidsdr.org/), [ZeroMQ/cppzmq](https://github.com/zeromq/cppzmq) and [libfec](https://github.com/fblomqvi/libfec) as dependencies, all of which you have to install. 
+You need a compiler, CMake 3.28+, git, and a handful of system libraries:
+
+```shell
+sudo apt-get install build-essential cmake ninja-build git pkg-config \
+                     libusb-1.0-0-dev libzmq3-dev cppzmq-dev libliquid-dev libfec-dev
+```
+
+CMake builds rtl-sdr and hackrf itself, from the revisions pinned in
+`cmake/Dependencies.cmake`, and links them statically: hardware support lives
+inside the driver, and the version the distribution ships decides which dongles
+work. Everything else above is used as packaged.
+
+```shell
+cmake -G Ninja -DCMAKE_BUILD_TYPE=Release -B build .
+ninja -C build
+```
 
 To use goodies in the `integrations/` directory, `sudo apt-get install python3 python3-zmq` as well.
 
-Note on Mac: we can't `brew install libfec`, compile and install it [from source](https://github.com/fblomqvi/libfec).
+Note on Mac: `brew install cmake ninja pkg-config libusb zeromq cppzmq liquid-dsp` covers everything but libfec, which has no Homebrew formula and has to be built once by hand:
+
+```shell
+git clone https://github.com/quiet/libfec.git
+cd libfec && ./configure && make && sudo make install
+```
 
 HackRF One users: there is a build flag `SAMPLES_PER_SYMBOL`, default to `8`, resulting in 10 MSPS sampling rate and slightly larger dynamic range than of RTL-SDR. Lower CPU consumption is achievable by setting it to `2` (2.5 MSPS). Setting to `4` is not recommended (bad performance). RTL-SDR maxes out at the required minimum of 2.5 MSPS (`SAMPLES_PER_SYMBOL=2`), there is no way to fine-tune that.
 
