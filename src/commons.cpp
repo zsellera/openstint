@@ -69,6 +69,14 @@ bool process_frame(Frame* frame) {
         break;
         case TransponderProtocol::RC3: {
             uint8_t status_code;
+            // Vostok transponders transmit with the RC3 preamble, but use different framing.
+            // decode_rc3() verifies an 8 bit tail, so ~1 in 256 Vostok frames might pass.
+            // An RC3 frame satisfying all 48 bits of the Vostok check is ~2^-48.
+            // => check Vostok first
+            if (decode_vostok(softbits, &transponder_id)) {
+                passing_detector.append(frame, TransponderSystem::Vostok, transponder_id);
+                return true;
+            }
             if (decode_rc3(softbits, &transponder_id, &status_code)) {
                 if (transponder_id >= 10000000) { // not a 7-digit transponder for sure
                     // check for known status/validation message (to track some statistics)
@@ -90,12 +98,6 @@ bool process_frame(Frame* frame) {
                 }
                 // at this point decoding was success; if status byte indicates
                 // non-transponder message, it should not screw decoded statistics
-                return true;
-            } else if (decode_vostok(softbits, &transponder_id)) {
-                // Vostok transponders transmit with the RC3 preamble, but use a
-                // completely different (uncoded) framing; fall back to it whenever
-                // the convolutional decode does not check out.
-                passing_detector.append(frame, TransponderSystem::Vostok, transponder_id);
                 return true;
             }
         }
