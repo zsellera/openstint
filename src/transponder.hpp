@@ -48,6 +48,7 @@ struct TransponderProps {
 void init_transponders();
 int decode_openstint(const uint8_t *softbits, uint32_t *transponder_id);
 int decode_rc3(const uint8_t *softbits, uint32_t *transponder_id, uint8_t *status_code);
+int decode_vostok(const uint8_t *softbits, uint32_t *transponder_id);
 
 inline constexpr TransponderProps TRANSPONDER_PROPERTIES[] = {
     {0x857c, 0xf9a8, 80, "OPN", preamble_symbols(0xf9a8), preamble_upsampled(0xf9a8)},

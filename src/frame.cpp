@@ -51,7 +51,7 @@ uint32_t concat_bits32(uint8_t *soft_bits) {
     return v;
 }
 
-int preamble_pos(uint32_t sof, uint16_t preamble) {
+int find_preamble_pos(uint32_t sof, uint16_t preamble) {
     const int preamble_size = 16;
     // modify if fseq_syms is changed; the preamble will be on an offset, defined by
     // the FSEq filter and it's implementation.
@@ -74,19 +74,21 @@ int preamble_pos(uint32_t sof, uint16_t preamble) {
     return (best_errors <= PREAMBLE_MAX_BIT_ERRORS) ? best_pos : -1;
 }
 
-const uint8_t* Frame::bits() {
+void Frame::identify_preamble() {
+    preamble_pos = -1;
+
     if (softbits.size() < 32) {
-        return nullptr;
+        return;
     }
 
     // start-of-frame 32 bits contain the preamble
     uint32_t sof = concat_bits32(softbits.data());
-    int pos = preamble_pos(sof, transponder_props(transponder_protocol).preamble);
+    int pos = find_preamble_pos(sof, transponder_props(transponder_protocol).preamble);
     if (pos < 0) {
         // try with bits inverted:
-        pos = preamble_pos(~sof, transponder_props(transponder_protocol).preamble);
+        pos = find_preamble_pos(~sof, transponder_props(transponder_protocol).preamble);
         if (pos < 0) { // preamble not found
-            return nullptr;
+            return;
         } else { // preamble found, but BPSK does not know the correct phase
             std::transform(
                 softbits.begin(), softbits.end(),
@@ -97,10 +99,18 @@ const uint8_t* Frame::bits() {
     }
     if (softbits.size() < pos + preamble_size + payload_size) {
         // could not read enough bits (this should be an exception btw...)
+        return;
+    }
+
+    preamble_pos = pos;
+}
+
+const uint8_t* Frame::bits() const {
+    if (preamble_pos < 0) {
         return nullptr;
     }
 
-    return softbits.data() + pos + preamble_size;
+    return softbits.data() + preamble_pos + preamble_size;
 }
 
 float Frame::rssi() const {
@@ -116,6 +126,7 @@ float Frame::symbol_magnitude() const {
 }
 
 std::ostream& operator <<(std::ostream& os, const Frame& f) {
+    // complex IQ symbols:
     std::stringstream ssym;
     std::transform(f.symbols.begin(), f.symbols.end(),
         std::ostream_iterator<std::string>(ssym, ", "),
@@ -129,8 +140,24 @@ std::ostream& operator <<(std::ostream& os, const Frame& f) {
             }
             return ss.str();
         });
+    // Softbits:
     std::stringstream sbits;
     std::copy(f.softbits.begin(), f.softbits.end(), std::ostream_iterator<int>(sbits, ", "));
+    // Decoded bits, preamble removed:
+    std::stringstream shex;
+    if (const uint8_t *payload = f.bits()) {
+        shex << std::hex << std::uppercase;
+        for (uint32_t i = 0; i < f.payload_size; i += 4) {
+            uint32_t nibble = 0;
+            for (uint32_t j = 0; j < 4; j++) {
+                nibble <<= 1;
+                if (i + j < f.payload_size && (payload[i+j] & 0x80)) {
+                    nibble |= 1u;
+                }
+            }
+            shex << nibble;
+        }
+    }
     return os << transponder_props(f.transponder_protocol).prefix
               << " TS:" << (f.timestamp/1000)
               << " TC:" << f.timecode
@@ -139,6 +166,7 @@ std::ostream& operator <<(std::ostream& os, const Frame& f) {
               << " EVM:" << f.evm()
               << " FREQ:" << (f.phase_per_symbol / (2.0f * 3.14) * 1250000.0f)
               << " MAG:" << f.symbol_magnitude()
+              << " BITS:" << shex.str()
               << " SYMBOLS:[" << ssym.str() << "]"
               << " SOFTBITS:[" << sbits.str() << "]";
 }

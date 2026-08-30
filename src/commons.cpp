@@ -42,6 +42,8 @@ static RC4Trainer rc4_trainer;
 static AmbRcBlacklist ambrc_blacklist;
 
 bool process_frame(Frame* frame) {
+    frame->identify_preamble();
+
     if (monitor_mode) {
         std::cout << "F " << *frame << std::endl;
     }
@@ -88,6 +90,12 @@ bool process_frame(Frame* frame) {
                 }
                 // at this point decoding was success; if status byte indicates
                 // non-transponder message, it should not screw decoded statistics
+                return true;
+            } else if (decode_vostok(softbits, &transponder_id)) {
+                // Vostok transponders transmit with the RC3 preamble, but use a
+                // completely different (uncoded) framing; fall back to it whenever
+                // the convolutional decode does not check out.
+                passing_detector.append(frame, transponder_id);
                 return true;
             }
         }

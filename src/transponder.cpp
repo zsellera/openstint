@@ -105,6 +105,54 @@ int decode_rc3(const uint8_t *softbits, uint32_t *transponder_id, uint8_t *statu
     return (trail == 0);
 }
 
+int decode_vostok(const uint8_t *softbits, uint32_t *transponder_id) {
+    // Vostok transponders reuse the RC3 preamble, but the payload is not
+    // convolutionally encoded at all. Once the differential-BPSK is undone, an
+    // 80 bit frame is plain: a fixed header, the transponder id sent twice, and
+    // two running XOR checksums.
+    //
+    //   byte:   0    1  |  2  3  4  |  5  |  6  7  8  |  9
+    //          0x63 0x1A|    id     | c1  |    id     | c2
+    //
+    // The id is a 24 bit big-endian word, so 0x4A6151 is transponder 4874577.
+    // Each checksum is the XOR of every byte before it:
+    //
+    //   c1 = 0x63 ^ 0x1A ^ id[0] ^ id[1] ^ id[2]   (XOR of bytes 0..4)
+    //   c2 = c1 ^ id[0] ^ id[1] ^ id[2] = c1 ^ 0x79  (XOR of bytes 0..8)
+    //
+    // so c2 is fully determined by c1, and c1 ^ c2 == 0x79 in every frame.
+
+    // differential-decode into 10 bytes, MSB first. prev=0 as in decode_rc3.
+    uint8_t frame[10] = {0};
+    int prev = 0;
+    for (int i = 0; i < 80; i++) {
+        int raw = (softbits[i] > 127) ? 1 : 0;
+        frame[i / 8] |= static_cast<uint8_t>((raw ^ prev) << (7 - (i % 8)));
+        prev = raw;
+    }
+
+    if (frame[0] != 0x63 || frame[1] != 0x1a) { // fixed header
+        return 0;
+    }
+    // both copies of the transponder id must agree
+    if (frame[2] != frame[6] || frame[3] != frame[7] || frame[4] != frame[8]) {
+        return 0;
+    }
+    uint8_t c1 = 0;
+    for (int i = 0; i < 5; i++) {
+        c1 ^= frame[i];
+    }
+    if (c1 != frame[5] || static_cast<uint8_t>(c1 ^ 0x79) != frame[9]) {
+        return 0;
+    }
+
+    *transponder_id = (static_cast<uint32_t>(frame[2]) << 16)
+                    | (static_cast<uint32_t>(frame[3]) << 8)
+                    | static_cast<uint32_t>(frame[4]);
+
+    return 1;
+}
+
 void AmbRcBlacklist::process(uint64_t timestamp, uint8_t status_code, uint32_t transponder_id) {
     // not a candidate status/validation message:
     if ((status_code & 0xf8) != 0xf8) return; // not an AmbRc message

@@ -59,10 +59,15 @@ struct Frame {
     float phase = 0;
     float phase_per_symbol = 0; // radian/symbol
 
+    // offset of the preamble inside softbits, set by identify_preamble();
+    // negative until a preamble is located (or if there is none)
+    int preamble_pos = -1;
+
     Frame();
     Frame(TransponderProtocol transponder_protocol, float preamble_metric, uint64_t timestamp, uint64_t timecode);
 
-    const uint8_t* bits();
+    void identify_preamble(); // locates preamble, corrects the BPSK phase if needed
+    const uint8_t* bits() const; // payload softbits, null if the preamble was not identified
     float rssi() const;
     float evm() const;
     float symbol_magnitude() const;
