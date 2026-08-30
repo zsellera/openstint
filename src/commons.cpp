@@ -59,7 +59,7 @@ bool process_frame(Frame* frame) {
         case TransponderProtocol::OpenStint:
         if (decode_openstint(softbits, &transponder_id)) {
             if (transponder_id < 10000000u) {
-                passing_detector.append(frame, transponder_id);
+                passing_detector.append(frame, TransponderSystem::OpenStint, transponder_id);
             } else if ((transponder_id & 0x00A00000) == 0x00A00000) {
                 uint32_t transponder_timestamp = (transponder_id & 0x000FFFFF);
                 passing_detector.timesync(frame, transponder_timestamp);
@@ -84,9 +84,9 @@ bool process_frame(Frame* frame) {
                 // Let's build a block-list for such transponders.
                 ambrc_blacklist.process(frame->timestamp, status_code, transponder_id);
                 if (status_code == 0xff && !ambrc_blacklist.check_banned(transponder_id)) {
-                    passing_detector.append(frame, transponder_id);
+                    passing_detector.append(frame, TransponderSystem::AMB, transponder_id);
                 } else if ((status_code & 0x07) == 0) { // not a status/validation message for sure
-                    passing_detector.append(frame, transponder_id);
+                    passing_detector.append(frame, TransponderSystem::AMB, transponder_id);
                 }
                 // at this point decoding was success; if status byte indicates
                 // non-transponder message, it should not screw decoded statistics
@@ -95,7 +95,7 @@ bool process_frame(Frame* frame) {
                 // Vostok transponders transmit with the RC3 preamble, but use a
                 // completely different (uncoded) framing; fall back to it whenever
                 // the convolutional decode does not check out.
-                passing_detector.append(frame, transponder_id);
+                passing_detector.append(frame, TransponderSystem::Vostok, transponder_id);
                 return true;
             }
         }
@@ -106,7 +106,7 @@ bool process_frame(Frame* frame) {
                 return false;
             }
             if (rc4_registry->lookup(msg.payload, &transponder_id)) {
-                passing_detector.append(frame, transponder_id);
+                passing_detector.append(frame, TransponderSystem::AMB, transponder_id);
                 rc4_trainer.append(frame->timestamp, frame->rssi(), transponder_id, msg.payload);
                 return true;
             }

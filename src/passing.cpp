@@ -21,29 +21,19 @@ uint64_t timecode_to_usec(uint64_t timecode) {
     return timecode * 1000000ull / SAMPLE_RATE;
 }
 
-TransponderSystem transponder_system(TransponderProtocol ttype) {
-    switch (ttype) {
-        case TransponderProtocol::OpenStint:
-        return TransponderSystem::OpenStint;
-        case TransponderProtocol::RC3:
-        case TransponderProtocol::RC4:
-        return TransponderSystem::AMB;
-    }
-    return TransponderSystem::OpenStint; // silence compile-warning
-}
-
 std::string transponder_system_name(TransponderSystem tsys) {
     switch (tsys) {
         case TransponderSystem::OpenStint:
         return "OPN";
         case TransponderSystem::AMB:
         return "AMB";
+        case TransponderSystem::Vostok:
+        return "VOS";
     }
-    return "OPN"; // silence warning
 }
 
-void PassingDetector::append(const Frame* frame, uint32_t transponder_id) {
-    TransponderKey transponder_key = std::make_pair(transponder_system(frame->transponder_protocol), transponder_id);
+void PassingDetector::append(const Frame* frame, TransponderSystem transponder_system, uint32_t transponder_id) {
+    TransponderKey transponder_key = std::make_pair(transponder_system, transponder_id);
     Detection d(frame->timestamp, frame->timecode, frame->rssi());
     
     std::lock_guard<std::mutex> lock(mutex);

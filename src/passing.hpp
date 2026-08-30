@@ -15,7 +15,8 @@
 
 enum class TransponderSystem {
     OpenStint,  // openstint transponder
-    AMB         // rc3 and rc4 transponders
+    AMB,        // rc3 and rc4 transponders
+    Vostok,     // Vostok (using rc3 preamble)
 };
 
 std::string transponder_system_name(TransponderSystem tsys);
@@ -59,7 +60,7 @@ class PassingDetector {
     std::mutex mutex;
 
 public:
-    void append(const Frame* frame, uint32_t transponder_id);
+    void append(const Frame* frame, TransponderSystem transponder_system, uint32_t transponder_id);
     void timesync(const Frame* frame, uint32_t transponder_timestamp);
     std::vector<TimeSync> identify_timesyncs(uint64_t margin);
     std::vector<Passing> identify_passings(uint64_t deadline);
