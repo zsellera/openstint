@@ -21,6 +21,7 @@ Your prices might vary (shipping and taxes).
 You'll also need transponders:
 * [openstint-transpoder](https://github.com/zsellera/openstint-transponder) is a DIY open-source alternative. Go to JLCPCB for larger quantities (40pcs/$200, 80pcs/$300). For smaller quantities, ask around on [rctech forum](https://rctech.net/forum/radio-electronics/1137693-openstint-laptiming-decoder.html) - see [purchase options](purchase-transponder.md#purchase).
 * AMB RC3 (EOL), MyLaps RC4 ($100) and RC4-Hybrid ($150), as well as MRT mPTX ($70) and other RC3-clones are supported.
+* [Vostok](https://www.vostokelectronics.com/shop/) transponders (€35.00)
 * [RCHourGlass](https://github.com/mv4wd/RCHourglass/tree/master/Firmware/Transponder) transponders are also supported.
  
 

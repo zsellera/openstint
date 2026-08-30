@@ -1,5 +1,6 @@
 # Contributors
 
+- [@oldfan](https://github.com/oldfan) - Vostok IQ captures
 - [disq](https://www.rctech.net/forum/showpost.php?p=16250899&postcount=37) - RC4 verification scheme
 - [@oldfan](https://github.com/oldfan) - RC4 learning mode
 - [@oldfan](https://github.com/oldfan) - Decoding first generation RC3 transponders

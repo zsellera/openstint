@@ -4,7 +4,7 @@
 
 OpenStint is a software defined radio (SDR) based [laptiming decoder](docs/introduction.md), using either *HackRF One* or *RTL-SDR v4*. It works both with its own [transponder protocol](docs/transponder-protocol.md) and with AMB/RC3-based transponders. It can run on a Raspberry Pi 3 Model B+. Only a minimal electronics knowledge is required; touching a soldering iron is optional.
 
-* :tada: Natively supports OpenStint transponder, as well as RC3/RC4Hybrid/MRT and other RC3-clones
+* :tada: Natively supports OpenStint transponder, as well as RC3/RC4Hybrid, RC3-clones (MRT, Waldo, etc.) and Vostok transponders
 * :mortar_board: 3-wire RC4 support with [learning feature](docs/rc4.md)
 * :wrench: Off-the-shelf components, no electronic skills are required (HackRF One, RTL-SDR v3 & v4).
 * :checkered_flag: Tested with [LapBeeps](https://lapbeeps.com), [RCGTiming](https://rcgtiming.com/) and [ZRound](https://www.zround.com/index.php/download-mananger/)
