@@ -52,14 +52,14 @@ class Simulator:
             print(f"[tx] {message}")
 
     def status_loop(self):
-        """Publish status messages every 5 seconds."""
+        """Publish status messages every second."""
         while self.running:
             timecode = self.get_timecode()
             noise = -40 + random.gauss(0, 2)
             msg = f"S {timecode} {noise:.2f} 5 {self.hits} {floor(self.hits*random.randint(50, 99)/100)}"
             self.hits = 0
             self.publish(msg)
-            time.sleep(5)
+            time.sleep(1)
 
     def passing_loop(self, transponder_id: int, period: float, median_gap: float):
         """Generate passings at lognormally distributed intervals.
