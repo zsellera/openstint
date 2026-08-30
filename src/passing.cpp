@@ -30,6 +30,7 @@ std::string transponder_system_name(TransponderSystem tsys) {
         case TransponderSystem::Vostok:
         return "VOS";
     }
+    return "???";  // no Wreturn-type, Wswitch can still trigger
 }
 
 void PassingDetector::append(const Frame* frame, TransponderSystem transponder_system, uint32_t transponder_id) {
