@@ -1,3 +1,8 @@
+---
+title: OpenStint Transponder Radio Protocol
+description: "Technical spec of the OpenStint RC lap timing transponder protocol: BPSK framing, convolutional coding, transponder IDs, and time-sync messages."
+---
+
 # OpenStint transponder protocol
 
 There are no "personal transponders"; every transponder should have a **random** transponder id. The transponder id must be between 0 and 9999999 (under 7 decimal digits). As such, collisions are possible, but rare. On the other hand, there is no need for any centralized institution or committee to issue and maintain such a transponder database.

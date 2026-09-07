@@ -1,3 +1,8 @@
+---
+title: "Supported SDR Hardware: HackRF One vs RTL-SDR"
+description: Compare HackRF One and RTL-SDR v3/v4 radios for RC lap timing, with buying tips and thermal/performance notes for each.
+---
+
 # Supported SDR Hardware
 
 OpenStint works best with [HackRF One](https://greatscottgadgets.com/hackrf/one/) and [RTL-SDR v4](https://www.rtl-sdr.com/buy-rtl-sdr-dvb-t-dongles/). RTL-SDR v3 is also supported, but not recommended.

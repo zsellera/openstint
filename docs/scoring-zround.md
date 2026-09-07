@@ -1,3 +1,8 @@
+---
+title: ZRound Bridge for OpenStint Lap Timing
+description: Connect the OpenStint RC lap timing decoder to ZRound Suite using the free bridge-zround tool.
+---
+
 # ZRound
 
 [ZRound Suite](https://www.zround.com/index.php/sdm_downloads/zround-suite-latest/) is a very popular, free-to-use lap timing and race management software.

@@ -1,3 +1,8 @@
+---
+title: Decoder Receiver Architecture
+description: "Inside OpenStint's SDR receiver chain: preamble detection, Costas loop carrier recovery, and fractionally-spaced equalization for transponder decoding."
+---
+
 # Receiver architecture
 
 The challenges are:

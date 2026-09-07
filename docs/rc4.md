@@ -1,3 +1,8 @@
+---
+title: RC4 Transponder Learning Mode
+description: How OpenStint learns AMB RC4 and RC4-Hybrid transponders without a public protocol, using a step-by-step training and lookup-table approach.
+---
+
 # RC4 Transponder Learning
 
 OpenStint can decode AMB RC4 (3-wire) and RC4 Hybrid (2-wire) transponders using a learning trick. Unlike OpenStint and RC3 transponders, RC4 protocol's decoding mechanism is not known to the public.

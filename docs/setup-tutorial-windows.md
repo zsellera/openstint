@@ -1,3 +1,8 @@
+---
+title: Running OpenStint Lap Timing on Windows
+description: Download and start the OpenStint RC lap timing decoder on Windows, including start.bat options and gain settings for RTL-SDR and HackRF.
+---
+
 # Starting the decoder on Windows
 
 This project builds Windows binaries semi-regularly, and are available under the [latest-windows release page](https://github.com/zsellera/openstint/releases/tag/nightly-master). The provided `.zip` file contains the `openstint.exe` binary with all required dll-s and integrations.

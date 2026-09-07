@@ -1,3 +1,8 @@
+---
+title: Replaying Captured IQ Samples
+description: Capture and replay RTL-SDR or HackRF IQ samples through OpenStint for offline testing and debugging of RC lap timing decoding.
+---
+
 # Replay captured IQ samples
 
 Both HackRF and RTL-SDR have command line tools to capture IQ samples. OpenStint can replay these samples. This is useful for testing and debugging.

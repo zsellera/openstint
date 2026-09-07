@@ -1,3 +1,8 @@
+---
+title: Building the RC Lap Timing Loop Antenna
+description: How to build and terminate the wire loop antenna used for near-field RC lap timing, including wire gauge, spacing, and balun/preamp wiring.
+---
+
 # Pickup Antenna (Loop)
 
 This is commonly refered to as "loop". Geometerically it's indeed a loop, but from electrical standpoint, it's a *parallel-wire transmission line*. As such, it has two ends: 

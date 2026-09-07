@@ -1,3 +1,8 @@
+---
+title: Transponder Passing Detection & Placement
+description: "How transponder orientation and position affect signal strength and passing detection in near-field RC lap timing, with correct placement diagrams."
+---
+
 # Passing detection
 
 Depending on the orientation of the transponder and its' distance and position from the loop, one can get vastly different signal strengths.

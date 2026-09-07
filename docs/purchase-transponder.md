@@ -1,3 +1,8 @@
+---
+title: Buy or Build RC Lap Timing Transponders
+description: Where to buy OpenStint RC lap timing transponders, or manufacture your own via JLCPCB — pricing, known sellers, and how to get listed.
+---
+
 # Transponders
 
 This project is accompanied by an open-source [transponder project](https://github.com/zsellera/openstint-transponder) as well.

@@ -1,3 +1,8 @@
+---
+title: Raspberry Pi Setup for RC Lap Timing
+description: Install OpenStint on a Raspberry Pi for a standalone RC lap timing decoder, from apt install through systemd services and timing-software bridges.
+---
+
 # Raspberry Pi Setup Tutorial
 
 ## Prerequisites

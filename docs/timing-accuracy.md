@@ -1,3 +1,8 @@
+---
+title: RC Lap Timing Accuracy & Clock Sync
+description: Measured timing accuracy of OpenStint across HackRF, RTL-SDR, Windows, macOS and Linux, plus sources of clock error in RC lap timing systems.
+---
+
 # Timing Accuracy
 
 The time is measured on the host computer when the radio's buffer is processed. Unfortunately, there is no way to measure it using the radio (where it is actually received). The system can drop buffers at various levels of the stack (radio/usb/driver), and individual buffers have no serial number to track lost ones. We are at the mercy of the operating system's scheduler, giving an accuracy in the **410us ~ 10ms range**, depending on your configuration.

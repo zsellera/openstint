@@ -1,3 +1,8 @@
+---
+title: OpenStint Decoder Protocol (ZeroMQ Messages)
+description: "Reference for OpenStint's ZeroMQ-based decoder protocol: passing, time-sync, status, and RC4 learning messages for building lap timing integrations."
+---
+
 # OpenStint decoder protocol
 
 This page describes how to get information out of the OpenStint decoder software.

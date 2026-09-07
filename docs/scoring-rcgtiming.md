@@ -1,3 +1,8 @@
+---
+title: RCGTiming Integration for OpenStint
+description: Connect an OpenStint RC lap timing decoder to the RCGTiming online scoring platform using the free bridge and an API key.
+---
+
 # RCGTiming
 
 [RCGTiming](https://rcgtiming.com/) is an online timing and scoring platform. We have to use a small *bridge* that connects to an OpenStint decoder and relays the relevant messages to [their backend](https://rcgtiming.com/apidoc/index.html) via HTTP.

@@ -1,3 +1,8 @@
+---
+title: How RC Lap Timing Transponders Work
+description: How near-field transponder lap timing works, and why it's the technology of choice for RC racing and Formula 1 — explained for OpenStint's DIY decoder.
+---
+
 # Introduction
 
 OpenStint is a lap timing solution for radio-controlled car and boat racing. It relies on magnetic coupling (near field):

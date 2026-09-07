@@ -1,3 +1,8 @@
+---
+title: "TrackTiming: Offline Lap Timing Web App"
+description: TrackTiming is a mobile-friendly, offline lap timing and training web app for Raspberry Pi and OpenStint, with voice announcements and data export.
+---
+
 # TrackTiming
 
 [TrackTiming](https://github.com/CyberChacal/TrackTiming) is a mobile-friendly web interface to track laps and training sessions using Raspberry + OpenStint. It includes simple functions such as voice announcements, taking notes and exporting data. All you need is a smartphone or a laptop with WiFi.
