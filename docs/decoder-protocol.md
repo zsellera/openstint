@@ -50,7 +50,7 @@ msg_type, timecode, transponder_type, transponder_id, rssi, hit_count, pass_dura
 
 Structure:
 ```
-P <decoder_timestamp:uint64> <transponder_type:string> <transponder_id:uint32_t> <rssi:float> <hit_count:uint32_t> <pass_duration:uint32> <snr:float> [other future parameters]
+P <decoder_timestamp:uint64> <transponder_type:string> <transponder_id:uint32_t> <rssi:float> <hit_count:uint32_t> <pass_duration:uint32> <mer:float> [other future parameters]
 ```
 
 Example:
@@ -67,7 +67,11 @@ P 1658197696 AMB 3616557 4.24 30 89652 19.6
 * `RSSI` is the maximum "**R**elative **S**ignal **S**trenght **I**ndicator. It is expressed in terms of power, in decibel scale. The reference point (0 dB) is the maximum power the radio can receive, and every measured value *should be* negative (high-power, clipped signals can present as positive values though). It is calculated from (an approximation of) RMS value. As such, the value `-3.0` means the full scale is used, larger values indicate clipping (decrease amplifier gains). Reliable reception is possible at 3 dB above noise floor (repored in status messages).
 * `hit_count` tells about the number of successfully decoded tranponder messages during the passing. OpenStint transponders should transmit a message on average every 1.5 ms. RC4-hybrid transponders send at a similar rate, but only every ~4th is an RC3 message (which is the supported message format).
 * `pass_duration` is an estimate of the transponder being spent inside the loop, in *microseconds*. It is usable for speed detection: 90000 us inside a 30 cm wide loop means 0.3/0.09=3.33 m/s or 12 km/h. Pass duration estimate is only available when the transponder's coil is in close proximity to the pickup loop (under-the-track loop). If detection is not possible, `0` value is reported.
-* `snr` is the signal quality of the passing, in decibels. It is the MER (**M**odulation **E**rror **R**atio, equal to `-20*log10(EVM_rms)`) of the decoded frame with the N-th highest RSSI, where N is the minimum number of hits needed for a passing to be reported. As every reported passing needed at least N decoded frames, this tells how much margin the weakest *necessary* frame had, rather than the best-case signal quality. Roughly speaking, it is the symbol-level SNR after equalization. Values below ~10 dB are marginal: frames start to fail decoding, and fewer hits are received per passing.
+* `mer` is the signal quality of the passing, in decibels. It is the MER (**M**odulation **E**rror **R**atio, equal to `-20*log10(EVM_rms)`) of the decoded frame with the N-th highest RSSI, where N is the minimum number of hits needed for a passing to be reported. As every reported passing needed at least N decoded frames, this tells how much margin the weakest *necessary* frame had, rather than the best-case signal quality. Roughly speaking, it is the symbol-level SNR after equalization.
+  * **below 3 dB**: bad - do a much better job installing the loop, setting gains and revisit transponder placement.
+  * **3..6 dB**: meh - you gave a chance to the error-correction algorithms, but do better
+  * **6..9 dB**: good
+  * **above 9 dB**: golden
 
 
 ### Time Syncronization ("T")
