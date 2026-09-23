@@ -3,7 +3,9 @@
 #include <cstdlib>
 #include <stdbool.h>
 
+#include <array>
 #include <complex>
+#include <limits>
 #include <mutex>
 #include <tuple>
 #include <cmath>
@@ -32,3 +34,27 @@ public:
     RxSnapshot snapshot_and_reset(uint64_t current_timestamp);
 };
 
+
+// P95 of |actual - expected| buffer arrival interval over the last ~5 s
+class TimestampJitter {
+public:
+    void sample(uint64_t host_us, uint64_t sample_count);
+    double p95_ms();
+
+private:
+    static constexpr uint64_t WINDOW_US = 5000000ull;
+    static constexpr std::size_t CAPACITY = 1024;
+
+    struct Entry {
+        uint64_t host_us;
+        uint32_t error_us; // |actual - expected| arrival interval
+    };
+
+    std::array<Entry, CAPACITY> entries{};
+    uint64_t head = 0;
+
+    bool started = false;
+    uint64_t prev_host_us = 0;
+
+    std::mutex mutex;
+};

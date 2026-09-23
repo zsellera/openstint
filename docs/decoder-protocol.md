@@ -99,21 +99,22 @@ Possible future extensions:
 
 Structure:
 ```
-S <decoder_timestamp:uint64> <noise_power:float> <dc_offset_magnitude:float> <frames_received> <frames_processed> [other future parameters]
+S <decoder_timestamp:uint64> <noise_power:float> <dc_offset_magnitude:float> <frames_received> <frames_processed> <jitter_p95_ms> [other future parameters]
 ```
 
 Example:
 ```
-S 1792039754 -41.018744 5.08 0 0
-S 1792040804 -41.2333267 5.08 77 52
-S 1792041851 -40.9898376 5.22 184 135
-S 1792042901 -41.0032545 5.08 0 0
+S 1792039754 -41.018744 5.08 0 0 3.01
+S 1792040804 -41.2333267 5.08 77 52 2.95
+S 1792041851 -40.9898376 5.22 184 135 2.94
+S 1792042901 -41.0032545 5.08 0 0 1.44
 ```
 
 * `decoder_timestamp` is the same monotoic clock as used in other messages.
 * `noise_power` is the average received signal level when no transponder messages are received. It is expressed in dBFS (decibel full-scale), just like the RSSI values. As it is log-scale, you can get the signal-to-noise ratio as `SNR = frame_power-noise_power`.
 * The `dc_offset_magnitude` is the absolute value of the DC-offset. It is radio-dependent error, and usually caused by phase-imbalance in the mixer stages. Post-mixer amplifiers (hackrf: VGA) amplifiy it. If the magnitude is larger than ~10.0, consider decreasing the VGA gain of the radio.
 * `frames_received` and `frames_processed` count the total and successfully processed transponder transmissions in the given reporting period. A large difference indicates a bad signal-to-noise environment or high inter-symbol interfecence (caused by bad LC-tuning). If you're experimenting with your own transponders, this is a good metric to track while tuning the capacitors of the "antenna loop".
+* `jitter_p95_ms` is an accuracy estimate of the decoder, in miliseconds. Read: 95% of passings in the past 5 seconds were *at least* this accurate. It's calculated from the clock jitter in the radio's callback thread, and reported as 95%-percentile. As it's typically a long-tail, 95% shows a much worse number than an "average error" metric would.
 
 Possible future extensions:
 * Low-bin (ie. 64) FFT on the received signal. It would help setting up preamps and amplifiers gains.

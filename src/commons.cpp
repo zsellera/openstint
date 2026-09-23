@@ -32,6 +32,7 @@ static SymbolReader symbol_reader;
 static Frame frame;
 static PassingDetector passing_detector;
 static RxStatistics rx_stats;
+static TimestampJitter timestamp_jitter;
 static float last_noise_floor = -std::numeric_limits<float>::infinity(); // noise floor from the last status snapshot, dBFS;
 static bool monitor_mode = false;
 static const uint64_t startup_ts = duration_cast<microseconds>(steady_clock::now().time_since_epoch()).count();
@@ -129,6 +130,9 @@ bool process_frame(Frame* frame) {
 
 void detect_frames(const std::complex<int8_t>* samples, std::size_t sample_count) {
     const uint64_t timestamp = duration_cast<microseconds>(steady_clock::now().time_since_epoch()).count() - startup_ts;
+
+    // collect jitter statistics
+    timestamp_jitter.sample(timestamp, sample_count);
 
     // on USB hiccup, there might be a super-small buffer, which can not even fit
     // the preamble; these buffers should be dropped as bougus to prevent indexing
@@ -251,12 +255,13 @@ void report_detections() {
         auto [noise_floor, dc_magnitude, frames_received, frames_processed] = rx_stats.snapshot_and_reset(now_ts);
         last_noise_floor = noise_floor;
 
-        const std::string report = std::format("S {} {:.2f} {:.2f} {} {}",
+        const std::string report = std::format("S {} {:.2f} {:.2f} {} {} {:.2f}",
             status_ts,
             noise_floor,
             dc_magnitude,
             frames_received,
-            frames_processed
+            frames_processed,
+            timestamp_jitter.p95_ms()
         );
 
         std::cout << report << std::endl;
