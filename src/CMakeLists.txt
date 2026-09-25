@@ -24,6 +24,7 @@ set(OPENSTINT_BASE_SOURCES
     commons.cpp
     capture.cpp
     rc4.cpp
+    syndrome.cpp
     crash_handler.cpp
 )
 

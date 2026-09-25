@@ -83,6 +83,20 @@ std::ostream& operator <<(std::ostream& os, const Frame& f);
 class FrameDetector {
     static constexpr int samples_per_symbol = SAMPLES_PER_SYMBOL;
 
+    // A preamble match must clear this many standard deviations of `corr` under
+    // noise alone. std(corr) = sqrt(taps/2) * noise_power, hence sqrt(16/2) =
+    // 2.8284; the 15-bit matches differ only by sqrt(15/16) = 0.968, which is not
+    // worth a second constant - they use the same (marginally stricter) floor.
+    static constexpr float corr_sigmas = 5.0f;
+    static constexpr float corr_per_noise = corr_sigmas * 2.8284271f;
+
+    // cap noise for preamble detection between meaningful levels
+    // constants: 10 ^ (limit_in_power_dBFS / 10)
+    // lower: -44 dBFS => 10 ^ -4.4
+    // upper: -30 dBFS => 10 ^ -3
+    static constexpr float noise_min = 3.98e-5f * (ADC_FULL_SCALE * ADC_FULL_SCALE);
+    static constexpr float noise_max = 0.001f * (ADC_FULL_SCALE * ADC_FULL_SCALE);
+
     std::complex<int32_t> last_samples[samples_per_symbol] = {0};
     CircBuff<uint16_t> buffers[samples_per_symbol];
     
@@ -90,6 +104,10 @@ class FrameDetector {
     std::complex<int32_t> offset= {0, 0}; // dc offset ~ sample mean
     std::complex<float> offset_hires = { 0.0f, 0.0f }; // dc offset
     float variance = 0; // ~noise power (expected value squared after dc offset removal)
+    // correlation floor the measured noise allows, recomputed with the statistics
+    // so that match_preamble() needs no float math. negative: a matching preamble
+    // drives the differential correlation down, not up
+    int32_t corr_floor = -static_cast<int32_t>(corr_per_noise * noise_min);
     
     // statistic calculation:
     std::complex<int32_t> s1 = {0, 0}; // sum of samples

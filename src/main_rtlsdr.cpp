@@ -205,8 +205,18 @@ int main(int argc, char** argv) {
         goto cleanup;
     }
 
-    // set IF filter bandwidth to 2.0 MHz - to be refined
-    result = rtlsdr_set_tuner_bandwidth(device, 2000000);
+    // set IF filter bandwidth to 1.7 MHz
+    // anything between 1.7M and 1.2M was shittier (internal leaks?),
+    // and 1.2M is below the Nyquist limit
+    // On the device (options):
+    // applied BW    IF      analog passband (IF)    BW/Rs
+    // 1.200 MHz  1.700 MHz  [1.10 .. 2.30] MHz     0.96x
+    // 1.450 MHz  1.575 MHz  [0.85 .. 2.30] MHz     1.16x
+    // 1.550 MHz  1.525 MHz  [0.75 .. 2.30] MHz     1.24x
+    // 1.600 MHz  1.500 MHz  [0.70 .. 2.30] MHz     1.28x
+    // 1.700 MHz  1.450 MHz  [0.60 .. 2.30] MHz     1.36x
+    // 2.050 MHz  1.625 MHz  [0.60 .. 2.65] MHz     1.64x 
+    result = rtlsdr_set_tuner_bandwidth(device, 1700000);
     if (result != 0) {
         std::fprintf(stderr, "rtlsdr_set_tuner_bandwidth() failed: %d\n", result);
     }

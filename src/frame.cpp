@@ -14,12 +14,11 @@
 #define PREAMBLE_MAX_BIT_ERRORS 2
 #define STATS_UPDATE_THRESHOLD (1<<12)
 
-#define PREAMBLE_THRESHOLD 0.78f
-#define PREAMBLE_15BIT_PENALTY (15.0f/16.0f)
+#define PREAMBLE_THRESHOLD 0.66f
 
 // preamble matching
-static inline const Preamble<uint16_t> p_openstint(transponder_props(TransponderProtocol::OpenStint).dpsk_preamble, PREAMBLE_THRESHOLD*PREAMBLE_15BIT_PENALTY);
-static inline const Preamble<uint16_t> p_rc3(transponder_props(TransponderProtocol::RC3).dpsk_preamble, PREAMBLE_THRESHOLD*PREAMBLE_15BIT_PENALTY);
+static inline const Preamble<uint16_t> p_openstint(transponder_props(TransponderProtocol::OpenStint).dpsk_preamble, PREAMBLE_THRESHOLD);
+static inline const Preamble<uint16_t> p_rc3(transponder_props(TransponderProtocol::RC3).dpsk_preamble, PREAMBLE_THRESHOLD);
 static inline const Preamble<uint16_t> p_rc4(transponder_props(TransponderProtocol::RC4).dpsk_preamble, PREAMBLE_THRESHOLD);
 
 
@@ -236,7 +235,7 @@ std::optional<DetectionResult> FrameDetector::process_baseband(const std::comple
     s2 += std::norm(r[0]);
     n++;
     
-    if (buffers[idx].match_preamble(p_rc4)) {       
+    if (buffers[idx].match_preamble(p_rc4, corr_floor)) {       
         return {{ TransponderProtocol::RC4, buffers[idx].calc_metric(p_rc4) }};
     }
 
@@ -248,13 +247,13 @@ std::optional<DetectionResult> FrameDetector::process_baseband(const std::comple
     // v1 transponder use the correct init sequence (-1 -1 -1 -1)
     // v2-beta used incorrect; to keep those tranponders alive, match on 15 bits only
     // new transpoders are fixed, this affects ~5 team/people
-    if (buffers[idx].match_preamble(p_openstint)) {
+    if (buffers[idx].match_preamble(p_openstint, corr_floor)) {
         return {{ TransponderProtocol::OpenStint, buffers[idx].calc_metric(p_openstint) }};
     }
 
     // - AmbRC/RCHG/MRT use 0xF916 dpsk preamble
     // - RC4Hybrid use 0x7916
-    if (buffers[idx].match_preamble(p_rc3)) {
+    if (buffers[idx].match_preamble(p_rc3, corr_floor)) {
         return {{ TransponderProtocol::RC3, buffers[idx].calc_metric(p_rc3) }};
     }
     return std::nullopt;
@@ -278,6 +277,17 @@ void FrameDetector::update_statistics() {
         // estimate can land slightly below zero on a near-silent channel, and the
         // reporting path takes log10() of it
         variance = std::max(0.0f, static_cast<float>(s2) / (n - 1) - std::norm(residual));
+
+        // fold the noise power into the signed correlation floor here, once per
+        // update, so the per-symbol match in process_baseband() is a single
+        // integer compare. clamping the noise power (rather than the floor it
+        // produces) is what keeps both ends expressible as a receiver noise
+        // level: this only runs on frame-free buffers, but a strong transponder
+        // whose frame went undetected still lands in one, and then variance
+        // measures signal - enough to gate out real frames until the next
+        // update, so noise_max holds it back.
+        corr_floor = -static_cast<int32_t>(
+            corr_per_noise * std::clamp(variance, noise_min, noise_max));
 
         offset = complex_cast<int8_t>(s1 / n);
         offset_hires = mean;

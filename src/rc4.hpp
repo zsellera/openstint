@@ -16,8 +16,9 @@
 struct RC4Message {
     uint64_t payload;
     bool is_valid;
+    int corrections; // number of correction FEC did
 
-    RC4Message() : payload(0), is_valid(false) {}
+    RC4Message() : payload(0), is_valid(false), corrections(0) {}
     RC4Message(const uint8_t *softbits);
 };
 

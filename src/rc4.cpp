@@ -1,7 +1,8 @@
 #include "rc4.hpp"
 
+#include "syndrome.hpp"
+
 #include <algorithm>
-#include <bit>
 #include <cmath>
 #include <filesystem>
 #include <fstream>
@@ -9,87 +10,126 @@
 #include <set>
 #include <string>
 
-// Training wants a transponder parked on the antenna, so the candidate has to stand
-// this far above the measured noise floor. Frame::rssi() and the noise floor in RxSnapshot
-// are both dBFS over total complex power, so their difference is an SNR in dB and the
-// gate tracks the radio's gain instead of assuming one - which the previous absolute
-// -20 dBFS limit did, and got wrong by 10*log10(samples_per_symbol/2) on top of that.
-#define RC4_TRAINING_MIN_SNR 16.0f
+// Training wants a transponder parked on the antenna. One of the following must be met:
+// (1) the candidate has to stand this far above the measured noise floor.
+#define RC4_TRAINING_MIN_SNR 12.0f
+// (2) the candidate must have this much of signal strength
+#define RC4_TRAINING_MIN_RSSI -20.0f
+
+
+// GF(2) verification codes carried in blocks 17..20: check v is the XOR of the payload
+// bits its polynomial selects, plus a constant, and equals the bit at parity_pos[v].
+// The sixteen together are a CRC-16-CCITT (polynomial 0x1021) over the 64 bit payload.
+static const uint64_t check_polys[16] = {
+    // block 17:
+    0xc2cd82058e2c0c88ull,
+    0xe166c102c7160644ull,
+    0xf0b36081638b0322ull,
+    0xf859b040b1c58191ull,
+    // block 18:
+    0xbee15a25d6cecc40ull,
+    0xdf70ad12eb676620ull,
+    0x6fb8568975b3b310ull,
+    0xb7dc2b44bad9d988ull,
+    // block 19:
+    0xdbee15a25d6cecc4ull,
+    0x6df70ad12eb67662ull,
+    0x36fb8568975b3b31ull,
+    0x59b040b1c5819110ull,
+    // block 20:
+    0x2cd82058e2c0c888ull,
+    0x166c102c71606444ull,
+    0x0b36081638b03222ull,
+    0x859b040b1c581911ull
+};
+static const uint8_t check_constants[16] = {
+    0, 0, 1, 1,
+    0, 0, 0, 1,
+    0, 0, 1, 1,
+    1, 1, 1, 0
+};
+static const int parity_pos[16] = {
+    80, 81, 82, 83,
+    85, 86, 87, 88,
+    90, 91, 92, 93,
+    95, 96, 97, 98
+};
+
+// number of the least reliable symbols Chase-II retries
+static constexpr int RC4_CHASE_BITS = 4;
+
+// The frame's 36 parity checks, written over the 100 symbols as they arrive off the
+// air rather than over the differentially decoded bits. Both describe the same code,
+// but decoding before the differential step keeps one corrupted symbol as one flipped
+// bit -- decode after it and every symbol error turns into two neighbouring bit errors,
+// which is past what this code can repair.
+static SyndromeCode build_rc4_code() {
+    uint64_t columns[100] = {0};
+    uint64_t offset = 0;
+
+    // Mark that `check` covers decoded bit k. Since bits[k] = raw[k] ^ raw[k-1], the
+    // check reaches both symbols it was decoded from, and at k = 0 the preamble's
+    // raw[-1] = 1 turns into a constant term.
+    auto cover = [&columns, &offset](int check, int k) {
+        const uint64_t flag = 1ull << check;
+        columns[k] ^= flag;
+        if (k > 0) {
+            columns[k - 1] ^= flag;
+        } else {
+            offset ^= flag;
+        }
+    };
+
+    int check = 0;
+    // checks 0..15: the CRC bits, each against the payload bits its polynomial selects
+    for (int v = 0; v < 16; v++, check++) {
+        for (int i = 0; i < 64; i++) {
+            if (check_polys[v] & (1ull << (63 - i))) {
+                cover(check, (i / 4) * 5 + (i % 4)); // payload bit i sits here
+            }
+        }
+        cover(check, parity_pos[v]);
+        if (check_constants[v]) {
+            offset ^= 1ull << check;
+        }
+    }
+    // checks 16..35: the 5th bit of every block is the inverse of the 4th
+    for (int block = 0; block < 20; block++, check++) {
+        cover(check, block * 5 + 3);
+        cover(check, block * 5 + 4);
+        offset ^= 1ull << check; // they must differ, so the check carries the inversion
+    }
+
+    return SyndromeCode(columns, 100, offset);
+}
 
 RC4Message::RC4Message(const uint8_t *softbits) {
-    // differential-decode: decoded[i] = raw[i] ^ raw[i-1], assuming raw[-1] = 0
+    static const SyndromeCode code = build_rc4_code();
+
+    uint8_t raw[100];
+    const SyndromeCode::Correction correction = code.decode(softbits, raw, RC4_CHASE_BITS);
+    is_valid = correction.valid;
+    corrections = correction.flips;
+    payload = 0ull;
+    if (!is_valid) {
+        return;
+    }
+
+    // differential-decode the repaired symbols: decoded[i] = raw[i] ^ raw[i-1]
     uint8_t bits[100];
     int prev = 1; // from preamble
     for (int i = 0; i < 100; i++) {
-        int raw = softbits[i] > 127 ? 1 : 0;
-        bits[i] = raw ^ prev;
-        prev = raw;
+        bits[i] = raw[i] ^ prev;
+        prev = raw[i];
     }
 
-    // parity check: 5th bit of each block must be the inverse of the 4th
-    is_valid = true;
-    for (int block = 0; block < 20; block++) {
-        if (bits[block * 5 + 3] == bits[block * 5 + 4]) {
-            is_valid = false;
-            break;
-        }
-    }
-
-    // extract payload bits
-    payload = 0ull;
+    // extract payload bits; every block's 5th bit is parity, the first 4 are data
     for (int block = 0; block < 16; block++) {
         for (int bit = 0; bit < 4; bit++) {
             int bit_idx = block * 5 + bit;
             int payload_idx = block * 4 + bit;
             if (bits[bit_idx]) {
                 payload |= (uint64_t)1 << (63 - payload_idx);
-            }
-        }
-    }
-
-    // GF(2) verification codes: v[i] = XOR of selected payload bits, XOR constant
-    if (is_valid) {
-        static const std::vector<uint64_t> check_polys = {
-            // block 17:
-            0xc2cd82058e2c0c88ull,
-            0xe166c102c7160644ull,
-            0xf0b36081638b0322ull,
-            0xf859b040b1c58191ull,
-            // block 18:
-            0xbee15a25d6cecc40ull,
-            0xdf70ad12eb676620ull,
-            0x6fb8568975b3b310ull,
-            0xb7dc2b44bad9d988ull,
-            // block 19:
-            0xdbee15a25d6cecc4ull,
-            0x6df70ad12eb67662ull,
-            0x36fb8568975b3b31ull,
-            0x59b040b1c5819110ull,
-            // block 20:
-            0x2cd82058e2c0c888ull,
-            0x166c102c71606444ull,
-            0x0b36081638b03222ull,
-            0x859b040b1c581911ull
-        };
-        static const uint8_t check_constants[] = {
-            0, 0, 1, 1,
-            0, 0, 0, 1,
-            0, 0, 1, 1,
-            1, 1, 1, 0
-        };
-        static const int parity_pos[] = {
-            80, 81, 82, 83,
-            85, 86, 87, 88,
-            90, 91, 92, 93,
-            95, 96, 97, 98
-        };
-
-        for (int v = 0; v < 16; v++) {
-            auto popcount = std::popcount(payload & check_polys[v]);
-            auto parity = (popcount + check_constants[v]) % 2;
-            if (parity != bits[parity_pos[v]]) {
-                is_valid = false;
-                break;
             }
         }
     }
@@ -249,7 +289,9 @@ RC4Trainer::EvaluationResult RC4Trainer::evaluate(uint64_t timestamp, float nois
             // non-finite means there is no noise estimate yet (or the frames never stop
             // long enough to take one): fail closed rather than start on an unknown floor
             const float snr = last.rssi - noise_floor;
-            if (!std::isfinite(snr) || snr < RC4_TRAINING_MIN_SNR) break;
+            if (!std::isfinite(snr)) break;
+            // one of the conditions must be met:
+            if ((snr < RC4_TRAINING_MIN_SNR) && (last.rssi < RC4_TRAINING_MIN_RSSI)) break;
             auto tail = std::prev(buffer.end(), 128);
             auto [mn, mx] = std::minmax_element(
                 tail,

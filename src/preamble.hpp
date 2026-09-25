@@ -49,7 +49,6 @@ template<typename T>
 struct CircBuff {
     static_assert(std::is_unsigned<T>::value, "Preamble template parameter must be an unsigned integer type");
     static constexpr int bit_count = sizeof(T) * 8;
-    static constexpr int32_t early_threshold = -bit_count * 3;
 
     // current "tail" of the circular buffer
     int phase = 0;
@@ -76,21 +75,27 @@ public:
         buff[phase] = 0;
     }
     
-    bool match_preamble(const Preamble<T> &sync_word) {
+    // corr_floor: the least negative correlation still rejected, in the same units
+    // as buff (ADC counts^2). FrameDetector derives it from the measured noise
+    // power once per statistics update, so this stays a single integer compare.
+    bool match_preamble(const Preamble<T> &sync_word, int32_t corr_floor) {
         // run matched filter against differential signal
         int32_t corr = sync_word.dot(buff, phase);
-        
-        // early return - there is no valid match below a specified correlation
+
+        // early return - there is no valid match below a specified correlation.
+        // the normalised test below is scale-invariant and cannot tell a window
+        // the noise faked from a real one, so this is the only place the noise
+        // floor is seen at all.
         // the way the preamble match works is inverted, +A^2 means no change,
         // -A^2 means change in symbols (hence negative)
-        if (corr > early_threshold) return false;
+        if (corr > corr_floor) return false;
         
         // correlation result squared
         // the /4 is an optimization, so dotprod fits to int32
         corr /= 4;
 
-        // create a statistics that can predict how well
-        // the pattern fits to the sample.
+        // shape test: how well the pattern fits the window, independent of level.
+        // this is what rejects payload data and priming sequences.
         return static_cast<float>(corr*corr) > sync_word.threshold * static_cast<float>(window_energy);
     }
 
