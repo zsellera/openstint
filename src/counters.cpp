@@ -69,7 +69,7 @@ void TimestampJitter::sample(uint64_t host_us, uint64_t sample_count) {
     prev_host_us = host_us;
 }
 
-double TimestampJitter::p95_ms() {
+JitterSnapshot TimestampJitter::snapshot_ms() {
     std::vector<uint32_t> recent;
 
     {
@@ -87,12 +87,20 @@ double TimestampJitter::p95_ms() {
         }
     }
 
-    // percentile taken outside the lock: the RX callback should never wait on it
+    // percentiles taken outside the lock: the RX callback should never wait on it
     if (recent.size() < 20) {
-        return 0.0;
+        return { 0.0, 0.0, 0.0 };
     }
 
-    const std::size_t k = (recent.size() * 95) / 100;
-    std::nth_element(recent.begin(), recent.begin() + k, recent.end());
-    return static_cast<double>(recent[k]) / 1000.0;
+    const auto percentile_ms = [&recent](std::size_t pct) {
+        const std::size_t k = (recent.size() * pct) / 100;
+        std::nth_element(recent.begin(), recent.begin() + k, recent.end());
+        return static_cast<double>(recent[k]) / 1000.0;
+    };
+
+    const double p50 = percentile_ms(50);
+    const double p95 = percentile_ms(95);
+    const double max = static_cast<double>(*std::max_element(recent.begin(), recent.end())) / 1000.0;
+
+    return { p50, p95, max };
 }

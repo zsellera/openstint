@@ -254,14 +254,17 @@ void report_detections() {
     if (rx_stats.reporting_due(now_ts)) {
         auto [noise_floor, dc_magnitude, frames_received, frames_processed] = rx_stats.snapshot_and_reset(now_ts);
         last_noise_floor = noise_floor;
+        auto [jitter_p50, jitter_p95, jitter_max] = timestamp_jitter.snapshot_ms();
 
-        const std::string report = std::format("S {} {:.2f} {:.2f} {} {} {:.2f}",
+        const std::string report = std::format("S {} {:.2f} {:.2f} {} {} {:.2f} {:.2f} {:.2f}",
             status_ts,
             noise_floor,
             dc_magnitude,
             frames_received,
             frames_processed,
-            timestamp_jitter.p95_ms()
+            jitter_p50,
+            jitter_p95,
+            jitter_max
         );
 
         std::cout << report << std::endl;

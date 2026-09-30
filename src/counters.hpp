@@ -35,11 +35,14 @@ public:
 };
 
 
-// P95 of |actual - expected| buffer arrival interval over the last ~5 s
+// p50, p95 and max of the timing error (ms); all zero until enough samples land
+using JitterSnapshot = std::tuple<double, double, double>;
+
+// |actual - expected| buffer arrival interval statistics over the last ~5 s
 class TimestampJitter {
 public:
     void sample(uint64_t host_us, uint64_t sample_count);
-    double p95_ms();
+    JitterSnapshot snapshot_ms();
 
 private:
     static constexpr uint64_t WINDOW_US = 5000000ull;

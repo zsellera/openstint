@@ -69,3 +69,7 @@ _deps
 node_modules/
 **/.vitepress/dist/
 **/.vitepress/cache/
+
+## generated files
+*.rc4
+
