@@ -22,6 +22,7 @@
 using namespace std::chrono;
 
 static int zmq_port = DEFAULT_ZEROMQ_PORT;
+static const uint64_t MAX_PARKED_MS = 5000;
 static zmq::context_t* zmq_context = nullptr;
 static zmq::socket_t* publisher = nullptr;
 
@@ -212,6 +213,20 @@ bool parse_common_arguments(int& i, const int argc, const std::string& arg, char
         mode_sysclk = true;
     } else if (arg == "-s" && i + 1 < argc) {
         storage_dir = argv[++i];
+    } else if (arg == "-P" && i + 1 < argc) {
+        uint64_t parked_ms = std::strtoull(argv[++i], nullptr, 10);
+        if (parked_ms > MAX_PARKED_MS) {
+            // detection buffer holds only ~6 s per transponder, longer stays cannot be seen
+            std::cerr << "Error: parked mode threshold must be at most " << MAX_PARKED_MS << " ms.\n";
+            std::exit(1);
+        }
+        passing_detector.parked_usec = parked_ms * 1000ull;
+    } else if (arg == "-R" && i + 1 < argc) {
+        passing_detector.parked_tolerance_db = std::strtof(argv[++i], nullptr);
+        if (!(passing_detector.parked_tolerance_db > 0.0f)) { // nan as well
+            std::cerr << "Error: parked mode RSSI tolerance must be positive.\n";
+            std::exit(1);
+        }
     } else {
         return false;
     }

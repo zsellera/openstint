@@ -62,6 +62,9 @@ class PassingDetector {
     std::mutex mutex;
 
 public:
+    uint64_t parked_usec = 0; // stays longer than this report departure time instead of pass center; 0 = off
+    float parked_tolerance_db = 3.0f; // RSSI deviation from the parked level that counts as "started moving"
+
     void append(const Frame* frame, TransponderSystem transponder_system, uint32_t transponder_id);
     void timesync(const Frame* frame, uint32_t transponder_timestamp);
     std::vector<TimeSync> identify_timesyncs(uint64_t margin);

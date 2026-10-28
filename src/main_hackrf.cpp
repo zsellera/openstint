@@ -105,7 +105,7 @@ int main(int argc, char** argv) {
             if (arg != "-h") {
                 std::cerr << "Unknown argument: " << arg << "\n";
             }
-            std::cerr << "Usage: " << argv[0] << " [-d ser_nr] [-l <0..40>] [-v <0..62>] [-a] [-b] [-c file.iq] [-p tcp_port] [-s dir] [-m] [-t]\n";
+            std::cerr << "Usage: " << argv[0] << " [-d ser_nr] [-l <0..40>] [-v <0..62>] [-a] [-b] [-c file.iq] [-p tcp_port] [-s dir] [-m] [-t] [-P ms] [-R dB]\n";
             std::cerr << "\t-d ser_nr   default:first\tserial number of the desired HackRF\n";
             std::cerr << "\t-l <0..40>  default:" << static_cast<int>(DEFAULT_LNA_GAIN) << "  \tLNA gain (rf signal amplifier; valid values: 0/8/16/24/32/40)\n";
             std::cerr << "\t-v <0..62>  default:" << static_cast<int>(DEFAULT_LNA_GAIN) << "  \tVGA gain (baseband signal amplifier, steps of 2)\n";
@@ -116,6 +116,8 @@ int main(int argc, char** argv) {
             std::cerr << "\t-m          default:off \tEnable monitor mode (print received frames to stdout)\n";
             std::cerr << "\t-t          default:off \tUse system clock as the timebase (beware of NTP jumps)\n";
             std::cerr << "\t-s dir      default:.   \tRC4 registry storage directory\n";
+            std::cerr << "\t-P ms       default:off \tParked mode: stays longer than ms report departure time (max 5000)\n";
+            std::cerr << "\t-R dB       default:3   \tParked mode: RSSI change that counts as driving off\n";
             
             return 1;
         }

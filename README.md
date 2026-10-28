@@ -85,6 +85,8 @@ Usage: openstint_hackrf [-d ser_nr] [-l <0..40>] [-v <0..62>] [-a] [-b] [-p tcp_
 	-m          default:off 	Enable monitor mode (print received frames to stdout)
 	-t          default:off 	Use system clock as the timebase (beware of NTP jumps)
 	-s dir      default:.   	RC4 registry storage directory
+	-P ms       default:off 	Parked mode: stays longer than ms report departure time (max 5000)
+	-R dB       default:3   	Parked mode: RSSI change that counts as driving off
 ```
 
 ### RTL-SDR
@@ -99,6 +101,8 @@ Usage: openstint_rtlsdr [-d ser_nr] [-g <gain_dB>] [-D] [-b] [-p tcp_port] [-m] 
 	-m          default:off 	Enable monitor mode (print received frames to stdout)
 	-t          default:off 	Use system clock as the timebase (beware of NTP jumps)
 	-s dir      default:.   	RC4 registry storage directory
+	-P ms       default:off 	Parked mode: stays longer than ms report departure time (max 5000)
+	-R dB       default:3   	Parked mode: RSSI change that counts as driving off
 ```
 
 ## Contribution

@@ -275,7 +275,24 @@ float last_crossing(const std::vector<float>& data, float v) {
     return static_cast<float>(k);
 }
 
-PassingPoint compute_passing_point(const std::deque<Detection>& detections) {
+// car was parked on the loop, rssi is a long plateau; the passing is when
+// the car drove off, ie. the last time the signal was on the plateau level
+PassingPoint departure_point(const std::deque<Detection>& detections, float max_rssi, float tolerance_db) {
+    std::vector<float> rssi(detections.size());
+    std::transform(detections.begin(), detections.end(), rssi.begin(),
+        [](const Detection& d) { return d.rssi; });
+    std::nth_element(rssi.begin(), rssi.begin() + rssi.size()/2, rssi.end());
+    float plateau = rssi[rssi.size()/2]; // median, the parked part dominates
+
+    auto it = std::find_if(detections.rbegin(), detections.rend(),
+        [plateau, tolerance_db](const Detection& d) { return std::fabs(d.rssi - plateau) <= tolerance_db; });
+    const Detection& d = (it != detections.rend()) ? *it : detections.back();
+
+    uint64_t ts = detections.front().timestamp + timecode_to_usec(d.timecode - detections.front().timecode);
+    return {ts, max_rssi, 0};
+}
+
+PassingPoint compute_passing_point(const std::deque<Detection>& detections, uint64_t parked_usec, float parked_tolerance_db) {
     // Find the maximum RSSI
     const auto max_it = std::max_element(
         detections.begin(),
@@ -289,6 +306,11 @@ PassingPoint compute_passing_point(const std::deque<Detection>& detections) {
     // peak points to find the passing point
     if (detections.size() < 16) {
         return weigthed_passing(detections, max_rssi);
+    }
+
+    if (parked_usec > 0 &&
+        timecode_to_usec(detections.back().timecode - detections.front().timecode) > parked_usec) {
+        return departure_point(detections, max_rssi, parked_tolerance_db);
     }
 
     // there are enough datapoints to pattern match on the waveform; first resample to a uniform timegrid
@@ -348,8 +370,8 @@ float passing_snr(const std::deque<Detection>& detections) {
     return by_rssi[k].mer;
 }
 
-Passing create_passing(TransponderKey transponder_key, const std::deque<Detection>& detections) {
-    PassingPoint stats = compute_passing_point(detections);
+Passing create_passing(TransponderKey transponder_key, const std::deque<Detection>& detections, uint64_t parked_usec, float parked_tolerance_db) {
+    PassingPoint stats = compute_passing_point(detections, parked_usec, parked_tolerance_db);
     Passing p = {
         .timestamp = stats.weighted_timestamp,
         .transponder_type = transponder_key.first,
@@ -370,7 +392,7 @@ std::vector<Passing> PassingDetector::identify_passings(uint64_t deadline) {
     std::vector<TransponderKey> erasable_entries;
     for (const auto& [transponder_key, detections] : detections) {
         if (!detections.empty() && detections.back().timestamp <= deadline) {
-            Passing p = create_passing(transponder_key, detections);
+            Passing p = create_passing(transponder_key, detections, parked_usec, parked_tolerance_db);
             erasable_entries.push_back(transponder_key);
             if (p.hits >= REPORT_HIT_LIMIT) {
                 passings.push_back(std::move(p));
