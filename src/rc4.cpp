@@ -1,4 +1,5 @@
 #include "rc4.hpp"
+#include "passing.hpp"
 
 #include "syndrome.hpp"
 
@@ -283,7 +284,7 @@ RC4Trainer::EvaluationResult RC4Trainer::evaluate(uint64_t timestamp, float nois
 
     switch (state) {
         case state_t::IDLE: {
-            if (buffer.size() < 128) break;
+            if (buffer.size() < PLATEAU_WINDOW) break;
             const Entry &last = buffer.back();
             if ((int64_t)(timestamp - last.timestamp) > 100000) break;
             // non-finite means there is no noise estimate yet (or the frames never stop
@@ -292,14 +293,14 @@ RC4Trainer::EvaluationResult RC4Trainer::evaluate(uint64_t timestamp, float nois
             if (!std::isfinite(snr)) break;
             // one of the conditions must be met:
             if ((snr < RC4_TRAINING_MIN_SNR) && (last.rssi < RC4_TRAINING_MIN_RSSI)) break;
-            auto tail = std::prev(buffer.end(), 128);
+            auto tail = std::prev(buffer.end(), PLATEAU_WINDOW);
             auto [mn, mx] = std::minmax_element(
                 tail,
                 buffer.end(),
                 [](const Entry &a, const Entry &b) { return a.rssi < b.rssi; }
             );
             bool stable = (int64_t)(last.timestamp - tail->timestamp) <= 1000000 &&
-                          mx->rssi - mn->rssi <= 2.0f;
+                          mx->rssi - mn->rssi <= PLATEAU_START_DB;
             if (stable) {
                 state = state_t::TRAINING;
                 buffer.erase(buffer.begin(), tail);
@@ -319,7 +320,7 @@ RC4Trainer::EvaluationResult RC4Trainer::evaluate(uint64_t timestamp, float nois
                 buffer.end(),
                 [](const Entry &a, const Entry &b) { return a.rssi < b.rssi; }
             );
-            bool stable = (mx->rssi - mn->rssi) <= 3.0f;
+            bool stable = (mx->rssi - mn->rssi) <= PLATEAU_KEEP_DB;
             if (!stable) {
                 state = state_t::IDLE;
                 return EvaluationResult::INTERRUPED;
