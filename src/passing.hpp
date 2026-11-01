@@ -12,11 +12,6 @@
 #include "transponder.hpp"
 #include "frame.hpp"
 
-// A transponder sitting still on the loop (RC4 learning, parked cars): PLATEAU_WINDOW
-// frames flat to PLATEAU_START_DB, staying within PLATEAU_KEEP_DB while it does.
-#define PLATEAU_WINDOW 128
-#define PLATEAU_START_DB 2.0f
-#define PLATEAU_KEEP_DB 3.0f
 
 enum class TransponderSystem {
     OpenStint,  // openstint transponder
@@ -34,14 +29,6 @@ struct Detection {
 
     Detection(uint64_t _ts, uint64_t _tc, float _rssi, float _mer) : timestamp(_ts), timecode(_tc), rssi(_rssi), mer(_mer) {};
 };
-
-struct PassingPoint {
-    uint64_t weighted_timestamp;
-    float max_rssi;
-    uint64_t duration;
-};
-
-PassingPoint compute_passing_point(const std::deque<Detection>& detections);
 
 struct TimeSyncMsg {
     uint64_t decoder_timestamp;

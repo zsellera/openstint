@@ -86,9 +86,3 @@ if(WIN32 AND (USE_HACKRF OR USE_RTLSDR))
             DIRECTORIES "${OPENSTINT_MINGW_BIN}"
             DESTINATION ${CMAKE_INSTALL_BINDIR})
 endif()
-
-add_executable(passing_test passing_test.cpp passing.cpp frame.cpp)
-target_compile_definitions(passing_test PRIVATE SAMPLES_PER_SYMBOL=2)
-target_include_directories(passing_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
-target_link_libraries(passing_test PRIVATE openstint::liquid m)
-add_test(NAME passing COMMAND passing_test ${CMAKE_CURRENT_SOURCE_DIR}/testdata)

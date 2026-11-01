@@ -8,8 +8,13 @@
 
 #define REPORT_HIT_LIMIT 2
 #define TRANSPONDER_DETECTION_MSG_LIMIT (1<<12)
-// on a plateau longer than this the departure is reported instead of the pass center
+// parked car: a plateau longer than this reports the departure, not the pass center
 #define PARKED_MIN_USEC 1000000ull
+#define PARKED_WINDOW_USEC 500000ull
+#define PARKED_WINDOW_MIN_FRAMES 8
+// plateau start / end spread, the same as RC4 learning (rc4.cpp)
+#define PLATEAU_START_DB 2.0f
+#define PLATEAU_KEEP_DB 3.0f
 
 // scipy.signal.firwin(11, 8, fs=128, window="hann")
 static const std::vector<float> smoothing_fir = {
@@ -188,6 +193,11 @@ std::vector<Peak> find_peaks(const std::vector<float>& y, float min_prominence =
     return result;
 }
 
+struct PassingPoint {
+    uint64_t weighted_timestamp;
+    float max_rssi;
+    uint64_t duration;
+};
 
 // Calculate RSSI-weighted average timestamp for detections
 PassingPoint weigthed_passing(const std::deque<Detection>& detections, float max_rssi) {
@@ -299,16 +309,21 @@ PassingPoint between_crossings(const std::deque<Detection>& detections, size_t f
     };
 }
 
-// The transponder sat still on the loop, the same test RC4 learning uses: PLATEAU_WINDOW
-// frames within a second, flat to PLATEAU_START_DB; it lasts until the rssi spread since
-// then exceeds PLATEAU_KEEP_DB. The top of a slow pass can be flat for a while too, so
-// only plateaus longer than PARKED_MIN_USEC count. Returns [start, end) of the last one,
-// or an empty range if there is none.
+// [start, end) of the last plateau longer than PARKED_MIN_USEC (slow passes are flat for a while
+// too), or an empty range. The window is timed, not counted: weak transponders decode few frames.
 std::pair<size_t, size_t> find_plateau(const std::deque<Detection>& detections) {
     std::pair<size_t, size_t> parked = {0, 0};
-    for (size_t i = 0; i + PLATEAU_WINDOW <= detections.size(); i++) {
-        const size_t w = i + PLATEAU_WINDOW;
-        if (timecode_to_usec(detections[w-1].timecode - detections[i].timecode) > 1000000) {
+    size_t w = 0;
+    for (size_t i = 0; i < detections.size(); i++) {
+        w = std::max(w, i);
+        while (w < detections.size() &&
+               timecode_to_usec(detections[w].timecode - detections[i].timecode) <= PARKED_WINDOW_USEC) {
+            w++;
+        }
+        if (w == detections.size()) {
+            break; // window reaches past the last frame
+        }
+        if (w - i < PARKED_WINDOW_MIN_FRAMES) {
             continue;
         }
         auto [mn, mx] = std::minmax_element(detections.begin() + i, detections.begin() + w,
@@ -331,15 +346,13 @@ std::pair<size_t, size_t> find_plateau(const std::deque<Detection>& detections) 
     return parked;
 }
 
-// car was parked on the loop: the passing is when it drove off. The waveform after the
-// plateau is (part of) a regular passing: its center if all of it is there, the exit
-// wire if only that, otherwise the last time the signal was on the plateau level.
+// drive-off time: center of the pass after the plateau, else its exit wire, else the last frame on the plateau level
 PassingPoint departure_point(const std::deque<Detection>& detections, size_t plateau_start, size_t plateau_end, float max_rssi) {
     // starts on the last plateau frame
     std::deque<Detection> tail(detections.begin() + plateau_end - 1, detections.end());
     if (tail.size() >= 16) {
         const auto [y_uniform, tc_start, tc_duration] = resamp_uniform(tail);
-        // the plateau may ripple up to PLATEAU_KEEP_DB, smaller peaks can't be told from it
+        // smaller peaks are plateau ripple
         const auto [dips, peaks] = find_wire_crossings(y_uniform, filtfilt(smoothing_fir, y_uniform), PLATEAU_KEEP_DB);
         if (dips.size() == 3) {
             return between_crossings(tail, dips[0].index, dips[2].index, tc_duration, max_rssi);
