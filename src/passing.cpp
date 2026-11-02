@@ -288,7 +288,7 @@ struct WireCrossings {
     std::vector<Peak> peaks; // maxima of the smoothed waveform otherwise
 };
 
-WireCrossings find_wire_crossings(const std::vector<float>& y_uniform, const std::vector<float>& y_smoothed, float peak_prominence_db = 1.0f) {
+WireCrossings find_wire_crossings(const std::vector<float>& y_uniform, const std::vector<float>& y_smoothed, float peak_prominence_db) {
     std::vector<float> y_peaking(y_uniform.size());
     std::transform(y_uniform.begin(), y_uniform.end(), y_peaking.begin(), std::negate<float>{});
     return {
@@ -313,26 +313,26 @@ PassingPoint between_crossings(const std::deque<Detection>& detections, size_t f
 // too), or an empty range. The window is timed, not counted: weak transponders decode few frames.
 std::pair<size_t, size_t> find_plateau(const std::deque<Detection>& detections) {
     std::pair<size_t, size_t> parked = {0, 0};
-    size_t w = 0;
+    size_t window_end = 0;
     for (size_t i = 0; i < detections.size(); i++) {
-        w = std::max(w, i);
-        while (w < detections.size() &&
-               timecode_to_usec(detections[w].timecode - detections[i].timecode) <= PARKED_WINDOW_USEC) {
-            w++;
+        window_end = std::max(window_end, i);
+        while (window_end < detections.size() &&
+               timecode_to_usec(detections[window_end].timecode - detections[i].timecode) <= PARKED_WINDOW_USEC) {
+            window_end++;
         }
-        if (w == detections.size()) {
+        if (window_end == detections.size()) {
             break; // window reaches past the last frame
         }
-        if (w - i < PARKED_WINDOW_MIN_FRAMES) {
+        if (window_end - i < PARKED_WINDOW_MIN_FRAMES) {
             continue;
         }
-        auto [mn, mx] = std::minmax_element(detections.begin() + i, detections.begin() + w,
+        auto [mn, mx] = std::minmax_element(detections.begin() + i, detections.begin() + window_end,
             [](const Detection& a, const Detection& b) { return a.rssi < b.rssi; });
         float lo = mn->rssi, hi = mx->rssi;
         if (hi - lo > PLATEAU_START_DB) {
             continue;
         }
-        size_t end = w;
+        size_t end = window_end;
         for (; end < detections.size(); end++) {
             lo = std::min(lo, detections[end].rssi);
             hi = std::max(hi, detections[end].rssi);
@@ -341,7 +341,7 @@ std::pair<size_t, size_t> find_plateau(const std::deque<Detection>& detections) 
         if (timecode_to_usec(detections[end-1].timecode - detections[i].timecode) > PARKED_MIN_USEC) {
             parked = {i, end};
         }
-        i = end - 1;
+        i = end - 1; // continue after this plateau
     }
     return parked;
 }
@@ -372,10 +372,10 @@ PassingPoint departure_point(const std::deque<Detection>& detections, size_t pla
     std::transform(detections.begin() + plateau_start, detections.begin() + plateau_end, rssi.begin(),
         [](const Detection& d) { return d.rssi; });
     std::nth_element(rssi.begin(), rssi.begin() + rssi.size()/2, rssi.end());
-    float plateau = rssi[rssi.size()/2];
+    float plateau = rssi[rssi.size()/2]; // median
 
     auto it = std::find_if(detections.rbegin(), detections.rend(),
-        [plateau](const Detection& d) { return std::fabs(d.rssi - plateau) <= 3.0f; });
+        [plateau](const Detection& d) { return std::fabs(d.rssi - plateau) <= PLATEAU_KEEP_DB; });
     const Detection& d = (it != detections.rend()) ? *it : detections.back();
 
     uint64_t ts = detections.front().timestamp + timecode_to_usec(d.timecode - detections.front().timecode);
@@ -408,7 +408,7 @@ PassingPoint compute_passing_point(const std::deque<Detection>& detections) {
     // there are enough datapoints to pattern match on the waveform; first resample to a uniform timegrid
     const auto [y_uniform, tc_start, tc_duration] = resamp_uniform(detections);
     auto y_smoothed = filtfilt(smoothing_fir, y_uniform);
-    const auto [rssi_dips, rssi_peaks] = find_wire_crossings(y_uniform, y_smoothed);
+    const auto [rssi_dips, rssi_peaks] = find_wire_crossings(y_uniform, y_smoothed, 1.0f /* dB */);
     // if the transponder was placed paralel to the detection antenna, and the antenna was close,
     // there are two nulls right when the transponder passed over the loop wires
     if (rssi_dips.size() == 3) {
