@@ -8,6 +8,13 @@
 
 #define REPORT_HIT_LIMIT 2
 #define TRANSPONDER_DETECTION_MSG_LIMIT (1<<12)
+// parked car: a plateau longer than this reports the departure, not the pass center
+#define PARKED_MIN_USEC 1000000ull
+#define PARKED_WINDOW_USEC 500000ull
+#define PARKED_WINDOW_MIN_FRAMES 8
+// plateau start / end spread, the same as RC4 learning (rc4.cpp)
+#define PLATEAU_START_DB 2.0f
+#define PLATEAU_KEEP_DB 3.0f
 
 // scipy.signal.firwin(11, 8, fs=128, window="hann")
 static const std::vector<float> smoothing_fir = {
@@ -275,24 +282,107 @@ float last_crossing(const std::vector<float>& data, float v) {
     return static_cast<float>(k);
 }
 
-// car was parked on the loop, rssi is a long plateau; the passing is when
-// the car drove off, ie. the last time the signal was on the plateau level
-PassingPoint departure_point(const std::deque<Detection>& detections, float max_rssi, float tolerance_db) {
-    std::vector<float> rssi(detections.size());
-    std::transform(detections.begin(), detections.end(), rssi.begin(),
+// loop wire crossings on the waveform, as indices of the 128 step resampled grid
+struct WireCrossings {
+    std::vector<Peak> dips;  // nulls when the transponder plane is paralel to the wire
+    std::vector<Peak> peaks; // maxima of the smoothed waveform otherwise
+};
+
+WireCrossings find_wire_crossings(const std::vector<float>& y_uniform, const std::vector<float>& y_smoothed, float peak_prominence_db) {
+    std::vector<float> y_peaking(y_uniform.size());
+    std::transform(y_uniform.begin(), y_uniform.end(), y_peaking.begin(), std::negate<float>{});
+    return {
+        find_peaks(y_peaking, 3.0f /* prominence in dB */),
+        find_peaks(y_smoothed, peak_prominence_db)
+    };
+}
+
+// the passing is half way between two wire crossings (or at the crossing if first == last)
+PassingPoint between_crossings(const std::deque<Detection>& detections, size_t first, size_t last, uint64_t tc_duration, float max_rssi) {
+    auto pass_duration = static_cast<uint64_t>(last - first) * tc_duration / 128ul;
+    auto pass_center_offset = static_cast<uint64_t>(first) * tc_duration / 128ul + pass_duration/2;
+    auto pass_timestamp = detections.front().timestamp + timecode_to_usec(pass_center_offset);
+    return {
+        pass_timestamp,
+        max_rssi,
+        timecode_to_usec(pass_duration)
+    };
+}
+
+// [start, end) of the last plateau longer than PARKED_MIN_USEC (slow passes are flat for a while
+// too), or an empty range. The window is timed, not counted: weak transponders decode few frames.
+std::pair<size_t, size_t> find_plateau(const std::deque<Detection>& detections) {
+    std::pair<size_t, size_t> parked = {0, 0};
+    size_t window_end = 0;
+    for (size_t i = 0; i < detections.size(); i++) {
+        window_end = std::max(window_end, i);
+        while (window_end < detections.size() &&
+               timecode_to_usec(detections[window_end].timecode - detections[i].timecode) <= PARKED_WINDOW_USEC) {
+            window_end++;
+        }
+        if (window_end == detections.size()) {
+            break; // window reaches past the last frame
+        }
+        if (window_end - i < PARKED_WINDOW_MIN_FRAMES) {
+            continue;
+        }
+        auto [mn, mx] = std::minmax_element(detections.begin() + i, detections.begin() + window_end,
+            [](const Detection& a, const Detection& b) { return a.rssi < b.rssi; });
+        float lo = mn->rssi, hi = mx->rssi;
+        if (hi - lo > PLATEAU_START_DB) {
+            continue;
+        }
+        size_t end = window_end;
+        for (; end < detections.size(); end++) {
+            lo = std::min(lo, detections[end].rssi);
+            hi = std::max(hi, detections[end].rssi);
+            if (hi - lo > PLATEAU_KEEP_DB) break;
+        }
+        if (timecode_to_usec(detections[end-1].timecode - detections[i].timecode) > PARKED_MIN_USEC) {
+            parked = {i, end};
+        }
+        i = end - 1; // continue after this plateau
+    }
+    return parked;
+}
+
+// drive-off time: center of the pass after the plateau, else its exit wire, else the last frame on the plateau level
+PassingPoint departure_point(const std::deque<Detection>& detections, size_t plateau_start, size_t plateau_end, float max_rssi) {
+    // starts on the last plateau frame
+    std::deque<Detection> tail(detections.begin() + plateau_end - 1, detections.end());
+    if (tail.size() >= 16) {
+        const auto [y_uniform, tc_start, tc_duration] = resamp_uniform(tail);
+        // smaller peaks are plateau ripple
+        const auto [dips, peaks] = find_wire_crossings(y_uniform, filtfilt(smoothing_fir, y_uniform), PLATEAU_KEEP_DB);
+        if (dips.size() == 3) {
+            return between_crossings(tail, dips[0].index, dips[2].index, tc_duration, max_rssi);
+        }
+        if (peaks.size() == 2) {
+            return between_crossings(tail, peaks[0].index, peaks[1].index, tc_duration, max_rssi);
+        }
+        if (dips.size() == 1) {
+            return between_crossings(tail, dips[0].index, dips[0].index, tc_duration, max_rssi);
+        }
+        if (peaks.size() == 1) {
+            return between_crossings(tail, peaks[0].index, peaks[0].index, tc_duration, max_rssi);
+        }
+    }
+
+    std::vector<float> rssi(plateau_end - plateau_start);
+    std::transform(detections.begin() + plateau_start, detections.begin() + plateau_end, rssi.begin(),
         [](const Detection& d) { return d.rssi; });
     std::nth_element(rssi.begin(), rssi.begin() + rssi.size()/2, rssi.end());
-    float plateau = rssi[rssi.size()/2]; // median, the parked part dominates
+    float plateau = rssi[rssi.size()/2]; // median
 
     auto it = std::find_if(detections.rbegin(), detections.rend(),
-        [plateau, tolerance_db](const Detection& d) { return std::fabs(d.rssi - plateau) <= tolerance_db; });
+        [plateau](const Detection& d) { return std::fabs(d.rssi - plateau) <= PLATEAU_KEEP_DB; });
     const Detection& d = (it != detections.rend()) ? *it : detections.back();
 
     uint64_t ts = detections.front().timestamp + timecode_to_usec(d.timecode - detections.front().timecode);
     return {ts, max_rssi, 0};
 }
 
-PassingPoint compute_passing_point(const std::deque<Detection>& detections, uint64_t parked_usec, float parked_tolerance_db) {
+PassingPoint compute_passing_point(const std::deque<Detection>& detections) {
     // Find the maximum RSSI
     const auto max_it = std::max_element(
         detections.begin(),
@@ -308,40 +398,25 @@ PassingPoint compute_passing_point(const std::deque<Detection>& detections, uint
         return weigthed_passing(detections, max_rssi);
     }
 
-    if (parked_usec > 0 &&
-        timecode_to_usec(detections.back().timecode - detections.front().timecode) > parked_usec) {
-        return departure_point(detections, max_rssi, parked_tolerance_db);
+    if (timecode_to_usec(detections.back().timecode - detections.front().timecode) > PARKED_MIN_USEC) {
+        auto [plateau_start, plateau_end] = find_plateau(detections);
+        if (plateau_end > plateau_start) {
+            return departure_point(detections, plateau_start, plateau_end, max_rssi);
+        }
     }
 
     // there are enough datapoints to pattern match on the waveform; first resample to a uniform timegrid
     const auto [y_uniform, tc_start, tc_duration] = resamp_uniform(detections);
+    auto y_smoothed = filtfilt(smoothing_fir, y_uniform);
+    const auto [rssi_dips, rssi_peaks] = find_wire_crossings(y_uniform, y_smoothed, 1.0f /* dB */);
     // if the transponder was placed paralel to the detection antenna, and the antenna was close,
     // there are two nulls right when the transponder passed over the loop wires
-    std::vector<float> y_peaking(129);
-    std::transform(y_uniform.begin(), y_uniform.end(), y_peaking.begin(), std::negate<float>{});
-    auto rssi_dips = find_peaks(y_peaking, 3.0f /* prominence in dB */);
     if (rssi_dips.size() == 3) {
-        auto pass_duration = static_cast<uint64_t>(rssi_dips[2].index - rssi_dips[0].index) * tc_duration / 128ul;
-        auto pass_center_offset = static_cast<uint64_t>(rssi_dips[0].index) * tc_duration / 128ul + pass_duration/2;
-        auto pass_timestamp = detections.front().timestamp + timecode_to_usec(pass_center_offset);
-        return {
-            pass_timestamp,
-            max_rssi,
-            timecode_to_usec(pass_duration)
-        };
+        return between_crossings(detections, rssi_dips[0].index, rssi_dips[2].index, tc_duration, max_rssi);
     }
     // no dual dips were detected, try find double peaks on a smoothed transition waveform
-    auto y_smoothed = filtfilt(smoothing_fir, y_uniform);
-    auto rssi_peaks = find_peaks(y_smoothed, 1.0f /* dB */);
     if (rssi_peaks.size() == 2) {
-        auto pass_duration = static_cast<uint64_t>(rssi_peaks[1].index - rssi_peaks[0].index) * tc_duration / 128ul;
-        auto pass_center_offset = static_cast<uint64_t>(rssi_peaks[0].index) * tc_duration / 128ul + pass_duration/2;
-        auto pass_timestamp = detections.front().timestamp + timecode_to_usec(pass_center_offset);
-        return {
-            pass_timestamp,
-            max_rssi,
-            timecode_to_usec(pass_duration)
-        };
+        return between_crossings(detections, rssi_peaks[0].index, rssi_peaks[1].index, tc_duration, max_rssi);
     }
     // fall back to default:
     // find the first and last time when the waveform passed the peak-6dB mark,
@@ -370,8 +445,8 @@ float passing_snr(const std::deque<Detection>& detections) {
     return by_rssi[k].mer;
 }
 
-Passing create_passing(TransponderKey transponder_key, const std::deque<Detection>& detections, uint64_t parked_usec, float parked_tolerance_db) {
-    PassingPoint stats = compute_passing_point(detections, parked_usec, parked_tolerance_db);
+Passing create_passing(TransponderKey transponder_key, const std::deque<Detection>& detections) {
+    PassingPoint stats = compute_passing_point(detections);
     Passing p = {
         .timestamp = stats.weighted_timestamp,
         .transponder_type = transponder_key.first,
@@ -392,7 +467,7 @@ std::vector<Passing> PassingDetector::identify_passings(uint64_t deadline) {
     std::vector<TransponderKey> erasable_entries;
     for (const auto& [transponder_key, detections] : detections) {
         if (!detections.empty() && detections.back().timestamp <= deadline) {
-            Passing p = create_passing(transponder_key, detections, parked_usec, parked_tolerance_db);
+            Passing p = create_passing(transponder_key, detections);
             erasable_entries.push_back(transponder_key);
             if (p.hits >= REPORT_HIT_LIMIT) {
                 passings.push_back(std::move(p));

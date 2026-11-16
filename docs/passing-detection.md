@@ -42,6 +42,10 @@ In this setup, the fieldlines cross the loop as the transponder closes and leave
 
 In this arrangement fieldlines cancel each other out, and detection is theoretically not possible. In practice, conductive and ferromagetic parts on the vehicle might guide the fieldlines in a way there will be a detection though. These detections will be of lower signal strength.
 
+## Cars parked on the loop
+
+A car is parked on the loop (start grid, pit box) when its signal stays within 2 dB for half a second and within 3 dB for over 1 s. Its passing is reported when it drives off: at the center of the passing that follows, or at the exit wire, or at the last frame on the parked level. `pass_duration` is then 0, unless a full passing followed.
+
 ## Preliminary results
 
 In an artificial environment, the following double tranponder arrangement was able to reliably tell if the vehicle passed the loop forward or reverse (the transponders were placed ~15 mm from each other, and one transponder was detected a few miliseconds earlier than the other)
