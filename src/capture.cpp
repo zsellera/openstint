@@ -13,17 +13,33 @@
 // async read buffer so the processing loop sees familiar chunk sizes.
 static const size_t CHUNK_BYTES = 32768;
 
+// silence appended to the end of each file, longer than the passing deadline
+static const double REPLAY_FLUSH_SEC = 0.5;
+
+// the replay clock: time is the number of samples read so far, so the
+// reported timestamps are repeatable, independent of the host's clocks.
+static uint64_t replay_samples_read = 0;
+static double replay_sample_rate = 1.0;
+
+static uint64_t replay_now_us() {
+    return static_cast<uint64_t>(static_cast<double>(replay_samples_read) * 1e6 / replay_sample_rate);
+}
+
 void replay_capture(const std::vector<std::string>& files,
                     double sample_rate,
                     capture_callback_t cb,
-                    void* ctx,
                     const std::atomic<bool>& do_exit) {
     std::vector<uint8_t> read_buf(CHUNK_BYTES);
 
+    replay_samples_read = 0;
+    replay_sample_rate = sample_rate;
+
+#ifndef REPLAY_UNPACED
     // one chunk worth of complex samples corresponds to this much real time,
     // which we use to pace the replay to mimic a real-life capture.
     using clock = std::chrono::steady_clock;
     clock::time_point next_chunk = clock::now();
+#endif
 
     // build the list of streams to replay; an empty list means read stdin
     std::vector<std::string> sources = files;
@@ -62,20 +78,25 @@ void replay_capture(const std::vector<std::string>& files,
             if (byte_count == 0) {
                 break;
             }
-
-            // hand the raw chunk to the device-specific converter, then drain
-            // whatever frames it produced.
-            cb(read_buf.data(), byte_count, ctx);
-            report_detections();
-
             uint32_t sample_count = byte_count / 2;
+
+            // hand the raw chunk to the device-specific converter (the clock reads
+            // the time of the chunk's first sample), then drain the frames it produced.
+            cb(read_buf.data(), byte_count, reinterpret_cast<void*>(&replay_now_us));
+            replay_samples_read += sample_count;
+            report_detections(replay_now_us());
+
+#ifndef REPLAY_UNPACED
             next_chunk += std::chrono::duration_cast<clock::duration>(
                 std::chrono::duration<double>(sample_count / sample_rate));
             std::this_thread::sleep_until(next_chunk);
+#endif
         }
 
-        // give the pipeline a moment to flush, then emit the final report
-        std::this_thread::sleep_for(std::chrono::milliseconds(500));
-        report_detections();
+        // flush: advance the replay clock past the passing deadline so the
+        // transponders still on the loop at the end of the file get reported.
+        // The replay clock keeps running from here into the next file.
+        replay_samples_read += static_cast<uint64_t>(sample_rate * REPLAY_FLUSH_SEC);
+        report_detections(replay_now_us());
     }
 }

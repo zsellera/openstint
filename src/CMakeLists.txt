@@ -12,6 +12,7 @@ set(CMAKE_CXX_FLAGS_RELEASE "-O3")
 
 option(USE_HACKRF "Enable HackRF support" ON)
 option(USE_RTLSDR "Enable RTL-SDR support" ON)
+option(REPLAY_UNPACED "Replay captures (-c) as fast as possible instead of in real time" OFF)
 
 set(SAMPLES_PER_SYMBOL 8 CACHE STRING "HackRF samples per symbol (2 or 8)")
 
@@ -38,6 +39,9 @@ find_package(cppzmq REQUIRED)
 function(openstint_add_decoder target main_source radio_lib samples_per_symbol)
     add_executable(${target} ${main_source} ${OPENSTINT_BASE_SOURCES})
     target_compile_definitions(${target} PRIVATE SAMPLES_PER_SYMBOL=${samples_per_symbol})
+    if(REPLAY_UNPACED)
+        target_compile_definitions(${target} PRIVATE REPLAY_UNPACED)
+    endif()
     target_include_directories(${target} PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
     target_link_libraries(${target} PRIVATE
         ${radio_lib}

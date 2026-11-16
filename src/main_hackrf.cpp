@@ -39,7 +39,7 @@ extern "C" int rx_callback(hackrf_transfer* transfer) {
     uint32_t sample_count = transfer->valid_length / 2;
     const std::complex<int8_t> *samples = reinterpret_cast<const std::complex<int8_t>*>(transfer->buffer);
     
-    detect_frames(samples, sample_count);
+    detect_frames(samples, sample_count, steady_now_us());
 
     // Returning 0 indicates "keep going".
     return 0;
@@ -48,7 +48,7 @@ extern "C" int rx_callback(hackrf_transfer* transfer) {
 // capture replay callback (capture.cpp interface). hackrf_transfer captures
 // store signed int8 I/Q just like the live transfer buffer, so no conversion
 // is needed — we only reinterpret the raw bytes.
-void file_rx_callback(unsigned char* buf, uint32_t len, void* /*ctx*/) {
+void file_rx_callback(unsigned char* buf, uint32_t len, void* ctx) {
     if (do_exit) {
         return;
     }
@@ -56,7 +56,7 @@ void file_rx_callback(unsigned char* buf, uint32_t len, void* /*ctx*/) {
     uint32_t sample_count = len / 2;
     const std::complex<int8_t>* samples = reinterpret_cast<const std::complex<int8_t>*>(buf);
 
-    detect_frames(samples, sample_count);
+    detect_frames(samples, sample_count, reinterpret_cast<rx_clock_t>(ctx)());
 }
 
 int main(int argc, char** argv) {
@@ -134,7 +134,7 @@ int main(int argc, char** argv) {
     if (!capture_files.empty()) {
         std::cout << "HackRF FILE RX: replaying " << capture_files.size()
                   << " capture file(s), sample_rate=" << sample_rate << " Hz\n";
-        replay_capture(capture_files, sample_rate, file_rx_callback, nullptr, do_exit);
+        replay_capture(capture_files, sample_rate, file_rx_callback, do_exit);
         std::cerr << "Done.\n";
         return 0;
     }
@@ -223,7 +223,7 @@ int main(int argc, char** argv) {
     while (!do_exit && (streaming_status = hackrf_is_streaming(device)) == HACKRF_TRUE) {
         std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
-        report_detections();
+        report_detections(steady_now_us());
     }
     if (!do_exit && streaming_status != HACKRF_TRUE) {
         std::fprintf(stderr, "hackrf_is_streaming() reported streaming stopped: %s (%d)\n",

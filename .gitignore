@@ -1,6 +1,7 @@
 build/
 tmp/
 __pycache__/
+captures/
 
 # packaging output (packaging/build-deb.sh)
 dist/*.deb

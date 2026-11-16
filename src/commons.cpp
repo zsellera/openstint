@@ -129,8 +129,12 @@ bool process_frame(Frame* frame) {
     return false;
 }
 
-void detect_frames(const std::complex<int8_t>* samples, std::size_t sample_count) {
-    const uint64_t timestamp = duration_cast<microseconds>(steady_clock::now().time_since_epoch()).count() - startup_ts;
+uint64_t steady_now_us() {
+    return duration_cast<microseconds>(steady_clock::now().time_since_epoch()).count() - startup_ts;
+}
+
+void detect_frames(const std::complex<int8_t>* samples, std::size_t sample_count, uint64_t rx_timestamp) {
+    const uint64_t timestamp = rx_timestamp;
 
     // collect jitter statistics
     timestamp_jitter.sample(timestamp, sample_count);
@@ -260,9 +264,8 @@ uint64_t reporting_timestamp(uint64_t timestamp_us, uint64_t steady_now, uint64_
     }
 }
 
-void report_detections() {
+void report_detections(uint64_t now_ts) {
     const uint64_t now_sysclk = duration_cast<microseconds>(system_clock::now().time_since_epoch()).count();
-    const uint64_t now_ts = duration_cast<microseconds>(steady_clock::now().time_since_epoch()).count() - startup_ts;
     const uint64_t status_ts = reporting_timestamp(now_ts, now_ts, now_sysclk);
 
     // report status once a second

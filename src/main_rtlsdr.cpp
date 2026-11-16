@@ -41,7 +41,8 @@ void signal_handler(int signum) {
 }
 
 // rtlsdr callback invoked for each block of data
-void rx_callback(unsigned char* buf, uint32_t len, void* /*ctx*/) {
+// ctx: rx_clock_t, steady_now_us from the radio, the replay clock for a capture
+void rx_callback(unsigned char* buf, uint32_t len, void* ctx) {
     if (do_exit) {
         return;
     }
@@ -65,7 +66,7 @@ void rx_callback(unsigned char* buf, uint32_t len, void* /*ctx*/) {
         );
     }
 
-    detect_frames(conversion_buffer.data(), sample_count);
+    detect_frames(conversion_buffer.data(), sample_count, reinterpret_cast<rx_clock_t>(ctx)());
 }
 
 int main(int argc, char** argv) {
@@ -123,7 +124,7 @@ int main(int argc, char** argv) {
     if (!capture_files.empty()) {
         std::cout << "RTL-SDR FILE RX: replaying " << capture_files.size()
                   << " capture file(s), sample_rate=" << sample_rate << " Hz\n";
-        replay_capture(capture_files, sample_rate, rx_callback, nullptr, do_exit);
+        replay_capture(capture_files, sample_rate, rx_callback, do_exit);
         std::cerr << "Done.\n";
         return 0;
     }
@@ -253,7 +254,7 @@ int main(int argc, char** argv) {
             std::chrono::steady_clock::now().time_since_epoch()).count();
         
         std::thread rx_thread([]() {
-            int r = rtlsdr_read_async(device, rx_callback, nullptr, 12, CHUNK_BYTES);
+            int r = rtlsdr_read_async(device, rx_callback, reinterpret_cast<void*>(&steady_now_us), 12, CHUNK_BYTES);
             if (r != 0) {
                 std::fprintf(stderr, "rtlsdr_read_async() failed: %d\n", r);
             }
@@ -265,7 +266,7 @@ int main(int argc, char** argv) {
         while (!do_exit && streaming) {
             std::this_thread::sleep_for(std::chrono::milliseconds(100));
 
-            report_detections();
+            report_detections(steady_now_us());
 
             // watchdog: rtlsdr_read_async() may stall silently if the device
             // is unplugged, so bail out if no samples arrive for a while
