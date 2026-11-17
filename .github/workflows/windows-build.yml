@@ -34,7 +34,8 @@ jobs:
         # the steps below, exactly as they were before the vendoring: liquid as
         # a prebuilt CubicSDR binary, libfec compiled from source. autoconf,
         # automake, libtool and make exist in this list only for that libfec
-        # build -- the project itself is CMake and Ninja.
+        # build -- the project itself is CMake and Ninja. wxwidgets3.3-msw is
+        # for openstint_desktop (desktop/), which links its static libraries.
         install: >-
           mingw-w64-x86_64-toolchain
           mingw-w64-x86_64-cmake
@@ -42,6 +43,7 @@ jobs:
           mingw-w64-x86_64-zeromq
           mingw-w64-x86_64-cppzmq
           mingw-w64-x86_64-libusb
+          mingw-w64-x86_64-wxwidgets3.3-msw
           git
           make
           autoconf
@@ -97,7 +99,7 @@ jobs:
     - name: Build OpenStint
       shell: msys2 {0}
       run: |
-        cmake -G "Ninja" -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} -B build .
+        cmake -G "Ninja" -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} -DBUILD_DESKTOP=ON -B build .
         ninja -C build
 
     - name: Setup Python
@@ -128,19 +130,22 @@ jobs:
         cp staging/bin/* openstint-windows-x64/
 
         # With the SDR and DSP libraries linked statically, what is left is the
-        # toolchain runtime, ZeroMQ and libusb. Assert the two binaries and at
+        # toolchain runtime, ZeroMQ and libusb. Assert the three binaries and at
         # least one DLL made it, so an empty or partial install fails here
         # rather than in a download.
         test -f openstint-windows-x64/openstint_hackrf.exe
         test -f openstint-windows-x64/openstint_rtlsdr.exe
+        test -f openstint-windows-x64/openstint_desktop.exe
         ls openstint-windows-x64/*.dll >/dev/null
 
         # liquid and fec are on this list even though they are system libraries
         # on every other platform. Neither is packaged for MSYS2, so both are
         # installed above as plain static archives with no import library --
         # which means they are linked into the .exe here and no DLL of either
-        # should ever appear beside it.
-        for lib in librtlsdr libhackrf libliquid libfec; do
+        # should ever appear beside it. wxbase/wxmsw: desktop/CMakeLists.txt
+        # selects wxWidgets' static libraries; a wx DLL here means it fell back
+        # to the shared ones, which would drag in a dozen image-library DLLs.
+        for lib in librtlsdr libhackrf libliquid libfec wxbase wxmsw; do
           if ls openstint-windows-x64/ | grep -qi "${lib}"; then
             echo "::error::${lib} was shipped as a DLL; it must be linked statically"
             exit 1

@@ -119,7 +119,8 @@ private:
 };
 
 MainFrame::MainFrame()
-    : wxFrame(nullptr, wxID_ANY, "OpenStint", wxDefaultPosition, wxSize(1200, 760)) {
+    : wxFrame(nullptr, wxID_ANY, "OpenStint") {
+    SetSize(FromDIP(wxSize(1200, 760)));
     SetMinSize(FromDIP(wxSize(900, 560)));
     SetIcons(app_icon_bundle()); // title bar / taskbar (Windows, Linux)
 
@@ -399,7 +400,7 @@ void MainFrame::on_status(const StatusReport& status) {
 void MainFrame::reset_status() {
     noise_floor = INITIAL_NOISE_FLOOR_DB;
     noise_history.clear();
-    noise_value->SetLabel(wxString::Format("%.1f dBFS", noise_floor));
+    noise_value->SetLabel(wxString::FromUTF8("–"));
     jitter_value->SetLabel(wxString::FromUTF8("–"));
     rc4_indicator->set("RC4 learning: idle", wxColour(120, 120, 128));
 }

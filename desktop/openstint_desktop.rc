@@ -1,0 +1,9 @@
+// Windows resources of openstint_desktop.
+//
+// wx.rc supplies wxWidgets' standard resources and, with wxUSE_RC_MANIFEST,
+// the application manifest: common controls v6 (themed widgets instead of the
+// Windows 95 look) and per-monitor v2 DPI awareness (sharp text on scaled
+// displays; the GUI sizes itself with FromDIP()).
+#define wxUSE_RC_MANIFEST 1
+#define wxUSE_DPI_AWARE_MANIFEST 2
+#include "wx/msw/wx.rc"
