@@ -61,6 +61,15 @@ cd libfec && ./configure && make && sudo make install
 
 HackRF One users: there is a build flag `SAMPLES_PER_SYMBOL`, default to `8`, resulting in 10 MSPS sampling rate and slightly larger dynamic range than of RTL-SDR. Lower CPU consumption is achievable by setting it to `2` (2.5 MSPS). Setting to `4` is not recommended (bad performance). RTL-SDR maxes out at the required minimum of 2.5 MSPS (`SAMPLES_PER_SYMBOL=2`), there is no way to fine-tune that.
 
+### Desktop app (RTL-SDR)
+
+`desktop/` holds an optional wxWidgets GUI, `openstint_desktop`: device selection, gain control, a peak signal energy chart (to spot clipping), and a per-passing hit graph (RSSI vs. time, coloured by MER) with a table of the last 1000 passings. It runs the same decoder as `openstint_rtlsdr`, ZeroMQ publishing included, and accepts the same `-p`, `-s`, `-t`, `-P`, `-R` and `-m` options. RC4 registry files go to the per-user data directory unless `-s` is given. RTL-SDR only. Install wxWidgets 3.2+ (`sudo apt-get install libwxgtk3.2-dev` / `brew install wxwidgets`), then:
+
+```shell
+cmake -G Ninja -DCMAKE_BUILD_TYPE=Release -DBUILD_DESKTOP=ON -B build .
+ninja -C build openstint_desktop
+```
+
 ## Integrations
 
 The primary method of 3rd-party integration with OpenStint is via ZeroMQ. The `openstint` process listens by default on port `:5556`, and acts as a ZeroMQ PUBLISHER for arbitrary number of clients.

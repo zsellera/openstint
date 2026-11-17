@@ -454,8 +454,21 @@ Passing create_passing(TransponderKey transponder_key, const std::deque<Detectio
         .rssi = stats.max_rssi,
         .hits = detections.size(),
         .duration = stats.duration,
-        .snr = passing_snr(detections)
+        .snr = passing_snr(detections),
+        .hit_list = {}
     };
+
+    // place hits on the timeline the passing point is computed on: the first
+    // detection's steady timestamp plus the sample-counter offset since then
+    p.hit_list.reserve(detections.size());
+    const Detection& first = detections.front();
+    for (const auto& d : detections) {
+        p.hit_list.push_back({
+            first.timestamp + timecode_to_usec(d.timecode - first.timecode),
+            d.rssi,
+            d.mer
+        });
+    }
     return p;
 }
 

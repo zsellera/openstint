@@ -7,3 +7,9 @@ include(GNUInstallDirs)
 include(Dependencies)
 
 add_subdirectory(src)
+
+# wxWidgets GUI for RTL-SDR (desktop/); off by default so the CLI build needs no wxWidgets
+option(BUILD_DESKTOP "Build the wxWidgets desktop app (RTL-SDR)" OFF)
+if(BUILD_DESKTOP)
+    add_subdirectory(desktop)
+endif()

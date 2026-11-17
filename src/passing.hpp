@@ -37,6 +37,13 @@ struct TimeSyncMsg {
     TimeSyncMsg(uint64_t _ts, uint64_t _transponder_ts) : decoder_timestamp(_ts), transponder_timestamp(_transponder_ts) {};
 };
 
+// a single received frame of a passing, on the same timebase as Passing::timestamp
+struct PassingHit {
+    uint64_t timestamp; // microseconds
+    float rssi;         // dBFS
+    float mer;          // dB
+};
+
 struct Passing {
     uint64_t timestamp;
     TransponderSystem transponder_type;
@@ -45,6 +52,7 @@ struct Passing {
     size_t hits;
     uint64_t duration;
     float snr; // dB, MER of the REPORT_HIT_LIMIT-th strongest detection
+    std::vector<PassingHit> hit_list; // every detection the passing was computed from, in time order
 };
 
 struct TimeSync {

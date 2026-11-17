@@ -43,6 +43,7 @@ static std::string storage_dir = ".";
 static std::unique_ptr<RC4FileBasedRegistry> rc4_registry;
 static RC4Trainer rc4_trainer;
 static AmbRcBlacklist ambrc_blacklist;
+static DecoderListener listener;
 
 bool process_frame(Frame* frame) {
     frame->identify_preamble();
@@ -222,6 +223,16 @@ bool parse_common_arguments(int& i, const int argc, const std::string& arg, char
     return true;
 }
 
+void set_decoder_listener(DecoderListener l) {
+    listener = std::move(l);
+}
+
+static void notify_rc4_learning(const Rc4LearningReport& report) {
+    if (listener.on_rc4_learning) {
+        listener.on_rc4_learning(report);
+    }
+}
+
 void init_commons() {
     install_crash_handler();
 
@@ -257,6 +268,7 @@ void report_detections(uint64_t now_ts) {
     if (rx_stats.reporting_due(now_ts)) {
         auto [noise_floor, dc_magnitude, frames_received, frames_processed] = rx_stats.snapshot_and_reset(now_ts);
         last_noise_floor = noise_floor;
+        const double jitter_p95_ms = timestamp_jitter.p95_ms();
 
         const std::string report = std::format("S {} {:.2f} {:.2f} {} {} {:.2f}",
             status_ts,
@@ -264,11 +276,15 @@ void report_detections(uint64_t now_ts) {
             dc_magnitude,
             frames_received,
             frames_processed,
-            timestamp_jitter.p95_ms()
+            jitter_p95_ms
         );
 
         std::cout << report << std::endl;
         publisher->send(zmq::buffer(report), zmq::send_flags::none);
+
+        if (listener.on_status) {
+            listener.on_status({status_ts, noise_floor, dc_magnitude, frames_received, frames_processed, jitter_p95_ms});
+        }
     }
     
     std::vector<TimeSync> timesyncs = passing_detector.identify_timesyncs(500000l);
@@ -298,6 +314,10 @@ void report_detections(uint64_t now_ts) {
 
         std::cout << report << std::endl;
         publisher->send(zmq::buffer(report), zmq::send_flags::none);
+
+        if (listener.on_passing) {
+            listener.on_passing(passing);
+        }
     }
 
     auto trainer_result = rc4_trainer.evaluate(now_ts, last_noise_floor);
@@ -306,12 +326,15 @@ void report_detections(uint64_t now_ts) {
             const auto report = std::format("L {} START {:.1f}", status_ts, rc4_trainer.last_rssi());
             std::cout << report << std::endl;
             publisher->send(zmq::buffer(report), zmq::send_flags::none);
+            notify_rc4_learning({.timestamp = status_ts, .event = Rc4LearningReport::Event::Start,
+                                 .rssi = rc4_trainer.last_rssi()});
         }
         break;
         case RC4Trainer::EvaluationResult::INTERRUPED: {
             const auto report = std::format("L {} INTERRUPTED", status_ts);
             std::cout << report << std::endl;
             publisher->send(zmq::buffer(report), zmq::send_flags::none);
+            notify_rc4_learning({.timestamp = status_ts, .event = Rc4LearningReport::Event::Interrupted});
         }
         break;
         case RC4Trainer::EvaluationResult::DONE: {
@@ -326,12 +349,15 @@ void report_detections(uint64_t now_ts) {
             const auto report = std::format("L {} DONE {} {}", status_ts, transponder_id, payloads.size());
             std::cout << report << std::endl;
             publisher->send(zmq::buffer(report), zmq::send_flags::none);
+            notify_rc4_learning({.timestamp = status_ts, .event = Rc4LearningReport::Event::Done,
+                                 .transponder_id = transponder_id, .payload_count = payloads.size()});
         }
         break;
         case RC4Trainer::EvaluationResult::RESET: {
             const auto report = std::format("L {} RESET", status_ts);
             std::cout << report << std::endl;
             publisher->send(zmq::buffer(report), zmq::send_flags::none);
+            notify_rc4_learning({.timestamp = status_ts, .event = Rc4LearningReport::Event::Reset});
         }
         break;
         case RC4Trainer::EvaluationResult::NO_ACTION:
