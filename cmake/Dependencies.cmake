@@ -15,11 +15,15 @@
 # simply does not see the dongle -- no link error, no runtime error, and no
 # rtlsdr_get_version() in the public API to assert on.
 #
-# liquid-dsp, libfec, libusb-1.0 and ZeroMQ stay system libraries on purpose.
-# None of them carries hardware knowledge, so a version difference costs
-# accuracy at worst, never "does not see the dongle", and libusb in particular
-# is the kernel-facing USB backend and should match the host. Debian and Ubuntu
-# package all four; Homebrew packages all but libfec, which macOS builders
+# liquid-dsp is built from source too, for a different reason: Windows has no
+# package for it, and the prebuilt MinGW archive CI used to download is gone.
+# Building it everywhere keeps one liquid version on every platform.
+#
+# libfec, libusb-1.0 and ZeroMQ stay system libraries on purpose. None of them
+# carries hardware knowledge, so a version difference costs accuracy at worst,
+# never "does not see the dongle", and libusb in particular is the
+# kernel-facing USB backend and should match the host. Debian and Ubuntu
+# package all three; Homebrew packages all but libfec, which macOS builders
 # install from source (see README.md).
 #
 # The .deb still declares runtime dependencies on rtl-sdr and hackrf even
@@ -32,6 +36,7 @@ include(FetchContent)
 # Bump deliberately: these decide which hardware the shipped binaries support.
 set(OPENSTINT_RTLSDR_TAG "v2.0.3")      # 2026-08-11, adds RTL-SDR Blog V4L
 set(OPENSTINT_HACKRF_TAG "v2026.01.3")  # 2026-01-30
+set(OPENSTINT_LIQUID_TAG "v1.8.3")      # must match cmake/liquid-clangcl/
 
 # FetchContent brings its dependencies in as subdirectories, and IMPORTED
 # targets are only visible in the directory that created them and below.
@@ -142,16 +147,68 @@ add_library(openstint::hackrf ALIAS openstint_hackrf_lib)
 # ---------------------------------------------------------------------------
 # liquid-dsp
 # ---------------------------------------------------------------------------
-# The one dependency that is NOT vendored.
-find_path(LIQUID_INCLUDE_DIR NAMES liquid/liquid.h)
-find_library(LIQUID_LIB REQUIRED NAMES liquid liquid-dsp)
+# Static library only, without upstream's examples, tests and benchmarks.
+# SIMD detection stays on: v1.8.3 compiles each SSE/AVX/NEON variant with a
+# target attribute and picks one at runtime by cpuid, so a binary built on a
+# newer CPU still runs on an older one.
+#
+# cmake/liquid-clangcl/ is copied verbatim from CubicSDR
+# (github.com/cjcliffe/CubicSDR, cmake/liquid-clangcl/ at commit
+# e2b2188909a9add7253a501e56a2df3823f64ef1), which maintains it for its own
+# Windows build of this same liquid tag. Do not edit those files; when bumping
+# OPENSTINT_LIQUID_TAG, take CubicSDR's set for the new tag. Every patch is
+# guarded by _WIN32 or _MSC_VER, so they are applied on all platforms and
+# change nothing outside Windows. Three take effect under MinGW (strsep,
+# unistd.h, timers); the other two and the complex.h shim are clang-cl only.
+find_package(Git REQUIRED)
+set(OPENSTINT_LIQUID_SUPPORT "${CMAKE_CURRENT_LIST_DIR}/liquid-clangcl")
+file(GLOB OPENSTINT_LIQUID_PATCHES CONFIGURE_DEPENDS "${OPENSTINT_LIQUID_SUPPORT}/patches/*.patch")
+list(SORT OPENSTINT_LIQUID_PATCHES)
 
-# Exposed the same way as the vendored three, so src/CMakeLists.txt links
-# openstint::liquid without caring where it came from.
-add_library(openstint_liquid INTERFACE)
-target_include_directories(openstint_liquid SYSTEM INTERFACE ${LIQUID_INCLUDE_DIR})
-target_link_libraries(openstint_liquid INTERFACE ${LIQUID_LIB})
-add_library(openstint::liquid ALIAS openstint_liquid)
+# checkout first, so re-running the patch step on an existing checkout does
+# not fail on patches that are already applied.
+FetchContent_Declare(liquid
+    GIT_REPOSITORY https://github.com/jgaeddert/liquid-dsp.git
+    GIT_TAG        ${OPENSTINT_LIQUID_TAG}
+    GIT_SHALLOW    TRUE
+    PATCH_COMMAND  "${GIT_EXECUTABLE}" checkout -- .
+          COMMAND  "${GIT_EXECUTABLE}" apply --whitespace=nowarn ${OPENSTINT_LIQUID_PATCHES}
+    EXCLUDE_FROM_ALL
+    SYSTEM
+)
+
+# block() keeps these switches, BUILD_SHARED_LIBS in particular, from leaking
+# into the rest of the project. CMP0077 lets them override liquid's option()
+# defaults, which its cmake_minimum_required(3.10) would otherwise ignore.
+block()
+    set(CMAKE_POLICY_DEFAULT_CMP0077 NEW)
+    # liquid prints ~150 lines of SIMD probing and a configuration summary;
+    # keep its warnings and errors, drop the rest.
+    set(CMAKE_MESSAGE_LOG_LEVEL WARNING)
+    set(BUILD_SHARED_LIBS  OFF)
+    set(BUILD_STATIC_LIBS  ON)
+    set(BUILD_EXAMPLES     OFF)
+    set(BUILD_AUTOTESTS    OFF)
+    set(BUILD_BENCHMARKS   OFF)
+    set(BUILD_SANDBOX      OFF)
+    set(BUILD_DOC          OFF)
+    set(FIND_FFTW          OFF) # liquid's own FFT; no optional system dependency
+    set(ENABLE_TIMESTAMPS  OFF) # no build date/host baked into the binaries
+    if(MSVC)
+        # CubicSDR's clang-cl flags. Untested here: CI builds with MinGW.
+        string(APPEND CMAKE_C_FLAGS
+            " -I\"${OPENSTINT_LIQUID_SUPPORT}/shim\" -D_USE_MATH_DEFINES -D_CRT_SECURE_NO_WARNINGS")
+    endif()
+    FetchContent_MakeAvailable(liquid)
+endblock()
+
+# Upstream links the library to `c` and `m`. Neither matters for a static
+# archive until it reaches our link line, where MinGW has no libc.a and fails
+# on -lc. Keep libm off Windows too, where the C runtime already provides it.
+set_property(TARGET liquid-static PROPERTY
+    INTERFACE_LINK_LIBRARIES "$<$<NOT:$<PLATFORM_ID:Windows>>:m>")
+
+add_library(openstint::liquid ALIAS liquid-static)
 
 # ---------------------------------------------------------------------------
 # libfec

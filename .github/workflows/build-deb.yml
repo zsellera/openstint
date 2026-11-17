@@ -37,11 +37,11 @@ jobs:
         run: |
           set -eux
           apt-get update
-          # rtl-sdr and hackrf are built from pinned source by
+          # rtl-sdr, hackrf and liquid-dsp are built from pinned source by
           # cmake/Dependencies.cmake and linked statically, so no -dev package
           # for them. git is needed at configure time now, not just for
-          # checkout: FetchContent clones the pinned revisions. liquid-dsp,
-          # libfec, libusb and ZeroMQ remain system libraries.
+          # checkout: FetchContent clones the pinned revisions. libfec, libusb
+          # and ZeroMQ remain system libraries.
           apt-get install -y --no-install-recommends \
             build-essential \
             cmake \
@@ -54,7 +54,6 @@ jobs:
             libusb-1.0-0-dev \
             libzmq3-dev \
             cppzmq-dev \
-            libliquid-dev \
             libfec-dev
 
       - name: Checkout code
@@ -100,7 +99,8 @@ jobs:
           # to whatever Debian ships -- 2.0.2 today, with no RTL-SDR Blog V4L
           # support -- and the pin in cmake/Dependencies.cmake stops meaning
           # anything. It fails silently at runtime, so it has to fail loudly
-          # here. liquid and fec are system libraries and belong in NEEDED.
+          # here. liquid is vendored too, so it is checked alongside them;
+          # fec is a system library and belongs in NEEDED.
           #
           # readelf -d, not ldd: ldd prints the whole transitive closure, which
           # is "what gets loaded" and not "what was this linked against".
@@ -108,7 +108,7 @@ jobs:
           for bin in openstint_rtlsdr openstint_hackrf; do
             needed="$(readelf -d "build/src/${bin}" |
                       sed -n 's/.*(NEEDED).*\[\(.*\)\]/\1/p')"
-            for lib in librtlsdr libhackrf; do
+            for lib in librtlsdr libhackrf libliquid; do
               if printf '%s\n' "$needed" | grep -q "^${lib}"; then
                 echo "::error::${bin} dynamically links ${lib}; it must be vendored"
                 exit 1

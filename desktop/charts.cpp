@@ -15,7 +15,7 @@ const wxColour BELOW_NOISE_BACKGROUND(40, 34, 52); // passing graph, under the n
 const wxColour NOISE_TEXT(150, 135, 185);
 const wxColour GRID(58, 58, 62);
 const wxColour AXIS_TEXT(170, 170, 175);
-const wxColour TEXT(225, 225, 230);
+const wxColour TEXT_COLOUR(225, 225, 230);
 
 struct ColourStop {
     double value;
@@ -256,7 +256,7 @@ void PassingChart::on_paint(wxPaintEvent&) {
     dc.SetBackground(wxBrush(BACKGROUND));
     dc.Clear();
     const wxFont normal = GetFont();
-    const wxFont small = small_font(this);
+    const wxFont label_font = small_font(this);
 
     const int left = FromDIP(52), right = FromDIP(16), top = FromDIP(34), bottom = FromDIP(38);
     const wxRect plot(left, top, size.x - left - right, size.y - top - bottom);
@@ -280,7 +280,7 @@ void PassingChart::on_paint(wxPaintEvent&) {
     }
 
     // y grid, fixed scale
-    dc.SetFont(small);
+    dc.SetFont(label_font);
     dc.SetTextForeground(AXIS_TEXT);
     for (int db = -48; db <= 0; db += 6) {
         const int y = static_cast<int>(to_y(db));
@@ -363,7 +363,7 @@ void PassingChart::on_paint(wxPaintEvent&) {
 
     // header: what is shown
     dc.SetFont(normal);
-    dc.SetTextForeground(TEXT);
+    dc.SetTextForeground(TEXT_COLOUR);
     wxString header = wxString::Format("%s %u   %s   RSSI %.1f dBFS   %zu hits   MER %.1f dB",
         wxString::FromUTF8(rec.type), rec.transponder_id, rec.wall_time.Format("%H:%M:%S.%l"),
         rec.rssi, rec.hits, rec.mer);
@@ -373,7 +373,7 @@ void PassingChart::on_paint(wxPaintEvent&) {
     dc.DrawText(header, plot.x, FromDIP(8));
 
     // MER legend, top right
-    dc.SetFont(small);
+    dc.SetFont(label_font);
     int x = plot.GetRight();
     for (auto [mer, text] : {std::pair{9.0, "≥9 dB"}, std::pair{6.0, "6"}, std::pair{3.0, "MER ≤3"}}) {
         const wxString s = wxString::FromUTF8(text);

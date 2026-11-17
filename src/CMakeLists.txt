@@ -80,7 +80,7 @@ if(WIN32 AND (USE_HACKRF OR USE_RTLSDR))
     #
     # DIRECTORIES is required, not a hint. On Windows the resolver looks in the
     # depending binary's own directory and in system32, and nowhere else -- it
-    # never consults PATH, so /mingw64/bin is invisible to it and every MinGW
+    # never consults PATH, so /ucrt64/bin is invisible to it and every MinGW
     # DLL comes back unresolved. The compiler lives in that same directory,
     # which is how we name it without hardcoding the MSYS2 install prefix.
     get_filename_component(OPENSTINT_MINGW_BIN "${CMAKE_CXX_COMPILER}" DIRECTORY)
