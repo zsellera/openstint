@@ -32,10 +32,9 @@ jobs:
         cache: true
         # rtl-sdr and hackrf are built from pinned source by
         # cmake/Dependencies.cmake, replacing the MSYS2 packages of the same
-        # name (rtl-sdr was stuck at 2.0.2, built November 2024). MSYS2 has no
-        # package for liquid-dsp or libfec, so those two are still fetched by
-        # the steps below, exactly as they were before the vendoring: liquid as
-        # a prebuilt CubicSDR binary, libfec compiled from source. autoconf,
+        # name (rtl-sdr was stuck at 2.0.2, built November 2024), and so is
+        # liquid-dsp, which MSYS2 does not package. libfec has no MSYS2
+        # package either and is compiled by the step below. autoconf,
         # automake, libtool and make exist in this list only for that libfec
         # build -- the project itself is CMake and Ninja. wxwidgets3.3-msw is
         # for openstint_desktop (desktop/), which links its static libraries.
@@ -54,30 +53,6 @@ jobs:
           libtool
           pkg-config
           zip
-
-    # MSYS2 has no liquid-dsp package, so this takes the prebuilt MinGW binaries
-    # (liquid v1.5.0, GCC 12.2) from CubicSDR's vendored copy. CubicSDR deleted
-    # them in November 2026 when it switched to building liquid itself, so the
-    # URL is pinned to the last commit that still has them. The archive was
-    # built against UCRT (it imports __acrt_iob_func), matching UCRT64.
-    # Building liquid from source on MinGW still needs patching: v1.8.3 fixed
-    # the version script and the SHARED-only target, but its logging uses
-    # strsep(), which MinGW lacks.
-    #
-    # libliquid.a is a real static archive, not an import library, so liquid
-    # ends up inside the .exe and the matching DLL is never needed -- CubicSDR
-    # ships one next to it, and the older version of this step downloaded it,
-    # but nothing has ever linked against it. It goes to $MINGW_PREFIX/lib
-    # (/ucrt64/lib) because that is where find_library() in
-    # cmake/Dependencies.cmake looks.
-    - name: Install liquid-dsp
-      shell: msys2 {0}
-      run: |
-        set -eu
-        LIQUID=https://raw.githubusercontent.com/cjcliffe/CubicSDR/4c68968901eae1fa49b5752cffd8667db6d1ab1a/external/liquid-dsp
-        mkdir -p "$MINGW_PREFIX/include/liquid"
-        curl -sSfL -o "$MINGW_PREFIX/include/liquid/liquid.h" "$LIQUID/include/liquid/liquid.h"
-        curl -sSfL -o "$MINGW_PREFIX/lib/libliquid.a"        "$LIQUID/gcc/64/libliquid.a"
 
     # No MSYS2 package and no pinned revision: upstream is quiet's fork of
     # ka9q's libfec, whose K=9 r=1/2 Viterbi API has not changed in twenty
@@ -142,11 +117,11 @@ jobs:
         test -f openstint-windows-x64/openstint_desktop.exe
         ls openstint-windows-x64/*.dll >/dev/null
 
-        # liquid and fec are on this list even though they are system libraries
-        # on every other platform. Neither is packaged for MSYS2, so both are
-        # installed above as plain static archives with no import library --
-        # which means they are linked into the .exe here and no DLL of either
-        # should ever appear beside it. wxbase/wxmsw: desktop/CMakeLists.txt
+        # liquid is built from source as a static library on every platform.
+        # fec is a system library elsewhere, but MSYS2 has no package, so it is
+        # installed above as a plain static archive with no import library --
+        # which means it is linked into the .exe here and no DLL of it should
+        # ever appear beside it. wxbase/wxmsw: desktop/CMakeLists.txt
         # selects wxWidgets' static libraries; a wx DLL here means it fell back
         # to the shared ones, which would drag in a dozen image-library DLLs.
         for lib in librtlsdr libhackrf libliquid libfec wxbase wxmsw; do

@@ -37,13 +37,14 @@ You need a compiler, CMake 3.28+, git, and a handful of system libraries:
 
 ```shell
 sudo apt-get install build-essential cmake ninja-build git pkg-config \
-                     libusb-1.0-0-dev libzmq3-dev cppzmq-dev libliquid-dev libfec-dev
+                     libusb-1.0-0-dev libzmq3-dev cppzmq-dev libfec-dev
 ```
 
 CMake builds rtl-sdr and hackrf itself, from the revisions pinned in
 `cmake/Dependencies.cmake`, and links them statically: hardware support lives
 inside the driver, and the version the distribution ships decides which dongles
-work. Everything else above is used as packaged.
+work. liquid-dsp is built the same way, so every platform (Windows included)
+uses the same version. Everything else above is used as packaged.
 
 ```shell
 cmake -G Ninja -DCMAKE_BUILD_TYPE=Release -B build .
@@ -52,7 +53,7 @@ ninja -C build
 
 To use goodies in the `integrations/` directory, `sudo apt-get install python3 python3-zmq` as well.
 
-Note on Mac: `brew install cmake ninja pkg-config libusb zeromq cppzmq liquid-dsp` covers everything but libfec, which has no Homebrew formula and has to be built once by hand:
+Note on Mac: `brew install cmake ninja pkg-config libusb zeromq cppzmq` covers everything but libfec, which has no Homebrew formula and has to be built once by hand:
 
 ```shell
 git clone https://github.com/quiet/libfec.git

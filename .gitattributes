@@ -1,0 +1,3 @@
+# liquid-dsp patches (cmake/Dependencies.cmake) apply to an LF checkout; keep
+# them byte-exact even where git converts line endings (Windows CI runners).
+cmake/liquid-clangcl/patches/*.patch -text

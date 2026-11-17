@@ -40,7 +40,6 @@ jobs:
           libusb-1.0-0-dev \
           libzmq3-dev \
           cppzmq-dev \
-          libliquid-dev \
           libfec-dev
 
     - name: Install Clang
@@ -74,17 +73,18 @@ jobs:
         # the only step that can catch that, and it must catch it here rather
         # than at a race meeting -- the soname has been librtlsdr.so.0 since
         # 0.5.3, so an old library loads silently and merely fails to see the
-        # dongle. liquid and fec are deliberately absent from the list: they
-        # are system libraries here and are expected to show up.
+        # dongle. liquid is vendored as well and checked with them; fec is
+        # deliberately absent from the list: it is a system library here and
+        # is expected to show up.
         #
         # readelf -d, not ldd: ldd prints the whole transitive closure, which
         # answers "what gets loaded" rather than "what was this linked
-        # against", and pulls in whatever libliquid.so.1 happens to depend on.
+        # against", and pulls in whatever libfec.so happens to depend on.
         # Only DT_NEEDED describes this binary's own link line.
         for bin in openstint_hackrf openstint_rtlsdr; do
           needed="$(readelf -d "./build/src/${bin}" |
                     sed -n 's/.*(NEEDED).*\[\(.*\)\]/\1/p')"
-          for lib in librtlsdr libhackrf; do
+          for lib in librtlsdr libhackrf libliquid; do
             if printf '%s\n' "$needed" | grep -q "^${lib}"; then
               echo "::error::${bin} dynamically links ${lib}; it must be vendored"
               printf '%s\n' "$needed"
