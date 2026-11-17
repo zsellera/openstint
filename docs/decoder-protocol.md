@@ -46,8 +46,6 @@ msg_type, timecode, transponder_type, transponder_id, rssi, hit_count, pass_dura
 
 ### Passings ("P")
 
-**BREAKING CHANGE:** Error Vector Magnitude is no longer reported with passings, but are visible per-frame in monitor mode (`-m` command line flag). The last parameter now is `pass_duration`.
-
 Structure:
 ```
 P <decoder_timestamp:uint64> <transponder_type:string> <transponder_id:uint32_t> <rssi:float> <hit_count:uint32_t> <pass_duration:uint32> <mer:float> [other future parameters]
@@ -118,10 +116,7 @@ S 1792042901 -41.0032545 5.08 0 0 1.44
 * `noise_power` is the average received signal level when no transponder messages are received. It is expressed in dBFS (decibel full-scale), just like the RSSI values. As it is log-scale, you can get the signal-to-noise ratio as `SNR = frame_power-noise_power`.
 * The `dc_offset_magnitude` is the absolute value of the DC-offset. It is radio-dependent error, and usually caused by phase-imbalance in the mixer stages. Post-mixer amplifiers (hackrf: VGA) amplifiy it. If the magnitude is larger than ~10.0, consider decreasing the VGA gain of the radio.
 * `frames_received` and `frames_processed` count the total and successfully processed transponder transmissions in the given reporting period. A large difference indicates a bad signal-to-noise environment or high inter-symbol interfecence (caused by bad LC-tuning). If you're experimenting with your own transponders, this is a good metric to track while tuning the capacitors of the "antenna loop".
-* `jitter_p95_ms` is an accuracy estimate of the decoder, in miliseconds. Read: 95% of passings in the past 5 seconds were *at least* this accurate. It's calculated from the clock jitter in the radio's callback thread, and reported as 95%-percentile. As it's typically a long-tail, 95% shows a much worse number than an "average error" metric would.
-
-Possible future extensions:
-* Low-bin (ie. 64) FFT on the received signal. It would help setting up preamps and amplifiers gains.
+* `jitter_p95_ms` is an accuracy estimate of the decoder, in milliseconds. Read: 95% of passings in the past 5 seconds were *at least* this accurate. It's calculated from the clock jitter in the radio's callback thread, and reported as 95%-percentile. As it's typically a long-tail, 95% shows a much worse number than an "average error" metric would.
 
 ### Learning Mode ("L")
 

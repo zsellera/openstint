@@ -7,11 +7,20 @@ on:
       - 'v*'
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build:
     runs-on: windows-latest
+
+    # The `signing` environment holds the Azure IDs (secrets) and the Artifact
+    # Signing account details (variables). Its name is also the subject of the
+    # federated credential on the Entra ID app registration, which is what lets
+    # azure/login exchange this job's OIDC token without a client secret.
+    environment: signing
+    permissions:
+      contents: read
+      id-token: write
 
     strategy:
       matrix:
@@ -144,6 +153,42 @@ jobs:
         cp dist/bridge-zround.exe openstint-windows-x64/
         cp dist/bridge-rcgtiming.exe openstint-windows-x64/
 
+    # Only Release is signed. The filter is exe on purpose: the DLLs beside
+    # them are MSYS2's builds of libzmq, libusb and the toolchain runtime, not
+    # ours, and signing them would put our name on someone else's binaries.
+    - name: Azure login
+      if: matrix.build_type == 'Release'
+      uses: azure/login@v3
+      with:
+        client-id: ${{ secrets.AZURE_CLIENT_ID }}
+        tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+        subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+
+    - name: Sign executables
+      if: matrix.build_type == 'Release'
+      uses: azure/artifact-signing-action@v2
+      with:
+        endpoint: ${{ vars.ARTIFACT_SIGNING_ENDPOINT }}
+        signing-account-name: ${{ vars.ARTIFACT_SIGNING_ACCOUNT }}
+        certificate-profile-name: ${{ vars.ARTIFACT_SIGNING_PROFILE }}
+        files-folder: ${{ github.workspace }}\openstint-windows-x64
+        files-folder-filter: exe
+        file-digest: SHA256
+        # Artifact Signing certificates live for 3 days; without a timestamp
+        # the signature stops validating when the certificate expires.
+        timestamp-rfc3161: http://timestamp.acs.microsoft.com
+        timestamp-digest: SHA256
+
+    - name: Verify signatures
+      if: matrix.build_type == 'Release'
+      shell: pwsh
+      run: |
+        Get-ChildItem openstint-windows-x64\*.exe | ForEach-Object {
+          $sig = Get-AuthenticodeSignature $_.FullName
+          if ($sig.Status -ne 'Valid') { throw "$($_.Name): $($sig.Status)" }
+          "{0}: {1}" -f $_.Name, $sig.SignerCertificate.Subject
+        }
+
     - name: Upload artifact
       uses: actions/upload-artifact@v4
       with:
@@ -153,6 +198,8 @@ jobs:
   release:
     needs: build
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
 
     steps:
     - name: Compute release metadata
