@@ -1,6 +1,6 @@
 ---
-title: DIY RC Lap Timing for $65 (RTL-SDR Build Guide)
-description: Build a complete DIY RC lap timing decoder for about $65 using an RTL-SDR dongle, a wire loop antenna, and free OpenStint software.
+title: DIY RC Lap Timing with an RTL-SDR (Build Guide)
+description: Build a complete DIY RC lap timing decoder using an RTL-SDR dongle, a wire loop antenna, and free OpenStint software.
 ---
 
 # Simple setup with RTL-SDR
